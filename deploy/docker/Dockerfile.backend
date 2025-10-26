@@ -1,0 +1,52 @@
+# Build stage
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /build
+
+# Установка зависимостей для компиляции
+RUN apk add --no-cache git
+
+# Копируем go.mod и go.sum
+COPY apps/backend/go.mod apps/backend/go.sum ./
+RUN go mod download
+
+# Устанавливаем goose для миграций
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+
+# Копируем исходный код
+COPY apps/backend/ .
+
+# Собираем приложение
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o worker ./cmd/worker
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates netcat-openbsd
+
+WORKDIR /app
+
+# Копируем скомпилированные бинарники
+COPY --from=builder /build/api .
+COPY --from=builder /build/worker .
+COPY --from=builder /go/bin/goose .
+
+# Копируем миграции
+COPY apps/backend/migrations ./migrations
+
+# Копируем конфигурацию
+COPY config.yml .
+
+# Копируем entrypoint скрипт
+COPY deploy/docker/entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+# Создаём директорию для временных файлов
+RUN mkdir -p /tmp/landly
+
+EXPOSE 8080
+
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["./api"]
+
