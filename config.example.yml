@@ -1,0 +1,35 @@
+# Example Local Configuration Override
+# Copy this file to config.local.yml and customize
+
+# Override only the settings you need to change
+# All other settings will use defaults from config.yml
+
+# Example: Custom database connection
+# database:
+#   postgres:
+#     host: localhost
+#     port: 5432
+#     password: my-local-password
+
+# Example: Use real OpenAI
+# ai:
+#   provider: openai
+#   openai:
+#     api_key: sk-...
+#     model: gpt-4-turbo-preview
+
+# Example: Custom S3 endpoint
+# storage:
+#   s3:
+#     endpoint: localhost:9000
+#     bucket: my-test-bucket
+
+# Example: Enable debug logging
+# logging:
+#   level: debug
+#   format: console
+
+# Example: Override public base URL used for published links
+# app:
+#   base_url: https://my-domain.example
+

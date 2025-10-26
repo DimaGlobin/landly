@@ -1,0 +1,240 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Landing Page Schema",
+  "description": "JSON schema for AI-generated landing pages",
+  "version": "1.0",
+  "type": "object",
+  "required": ["version", "pages"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version",
+      "const": "1.0"
+    },
+    "pages": {
+      "type": "array",
+      "description": "List of pages in the landing",
+      "items": {
+        "type": "object",
+        "required": ["path", "title", "blocks"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Page path (e.g., '/', '/about')",
+            "pattern": "^/.*"
+          },
+          "title": {
+            "type": "string",
+            "description": "Page title for SEO"
+          },
+          "description": {
+            "type": "string",
+            "description": "Meta description for SEO"
+          },
+          "blocks": {
+            "type": "array",
+            "description": "Page blocks (sections)",
+            "items": {
+              "type": "object",
+              "required": ["type", "props", "order"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "hero",
+                    "features",
+                    "pricing",
+                    "testimonials",
+                    "faq",
+                    "cta",
+                    "gallery",
+                    "about",
+                    "contact"
+                  ],
+                  "description": "Block type"
+                },
+                "props": {
+                  "type": "object",
+                  "description": "Block-specific properties (flexible JSON)",
+                  "additionalProperties": true
+                },
+                "order": {
+                  "type": "integer",
+                  "description": "Display order (0-based)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "description": "Visual theme configuration",
+      "properties": {
+        "palette": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "Primary color"
+            },
+            "secondary": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "Secondary color"
+            },
+            "accent": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "Accent color"
+            },
+            "background": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "Background color"
+            },
+            "text": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "description": "Text color"
+            }
+          }
+        },
+        "font": {
+          "type": "string",
+          "enum": ["system", "inter", "roboto", "montserrat"],
+          "description": "Font family"
+        },
+        "borderRadius": {
+          "type": "string",
+          "enum": ["none", "sm", "md", "lg", "xl"],
+          "description": "Border radius style"
+        }
+      }
+    },
+    "payment": {
+      "type": "object",
+      "description": "Payment integration (external URL only)",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "External payment page URL (e.g., Prodamus)"
+        },
+        "buttonText": {
+          "type": "string",
+          "description": "Payment button text",
+          "default": "Оплатить"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": "1.0",
+      "pages": [
+        {
+          "path": "/",
+          "title": "Онлайн-курс по программированию",
+          "description": "Научитесь программировать за 3 месяца",
+          "blocks": [
+            {
+              "type": "hero",
+              "order": 0,
+              "props": {
+                "headline": "Научитесь программировать за 3 месяца",
+                "subheadline": "Практический курс для начинающих с гарантией трудоустройства",
+                "ctaText": "Записаться на курс",
+                "image": "https://example.com/hero.jpg"
+              }
+            },
+            {
+              "type": "features",
+              "order": 1,
+              "props": {
+                "title": "Что вы получите",
+                "items": [
+                  {
+                    "icon": "code",
+                    "title": "Практические навыки",
+                    "description": "Реальные проекты в портфолио"
+                  },
+                  {
+                    "icon": "users",
+                    "title": "Менторская поддержка",
+                    "description": "Личный наставник на весь курс"
+                  },
+                  {
+                    "icon": "briefcase",
+                    "title": "Помощь в трудоустройстве",
+                    "description": "Гарантия трудоустройства или возврат денег"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "pricing",
+              "order": 2,
+              "props": {
+                "title": "Тарифы",
+                "plans": [
+                  {
+                    "name": "Базовый",
+                    "price": "29990",
+                    "currency": "₽",
+                    "period": "курс",
+                    "features": [
+                      "Доступ к видеоурокам",
+                      "Проверка домашних заданий",
+                      "Сертификат"
+                    ]
+                  },
+                  {
+                    "name": "Премиум",
+                    "price": "49990",
+                    "currency": "₽",
+                    "period": "курс",
+                    "featured": true,
+                    "features": [
+                      "Всё из Базового",
+                      "Личный ментор",
+                      "Помощь в трудоустройстве",
+                      "Пожизненный доступ"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "cta",
+              "order": 3,
+              "props": {
+                "title": "Начните карьеру в IT уже сегодня",
+                "buttonText": "Записаться на курс",
+                "description": "Первые 7 дней бесплатно"
+              }
+            }
+          ]
+        }
+      ],
+      "theme": {
+        "palette": {
+          "primary": "#3B82F6",
+          "secondary": "#8B5CF6",
+          "accent": "#F59E0B",
+          "background": "#FFFFFF",
+          "text": "#1F2937"
+        },
+        "font": "inter",
+        "borderRadius": "lg"
+      },
+      "payment": {
+        "url": "https://pay.prodamus.ru/example-checkout-link",
+        "buttonText": "Оплатить курс"
+      }
+    }
+  ]
+}
+

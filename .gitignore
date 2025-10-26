@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+vendor/
+
+*/main
+
+# Build outputs
+dist/
+build/
+out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Local config overrides
+config.local.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+*.test
+*.out
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Go specific
+*.test
+*.out
+go.work
+go.work.sum
+
+# Next.js
+.next/
+.vercel
+
+# Misc
+.cache/
+.parcel-cache/
+

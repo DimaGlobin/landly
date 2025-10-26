@@ -1,0 +1,360 @@
+openapi: 3.0.3
+info:
+  title: Landly API
+  description: API для платформы генерации AI-лендингов
+  version: 1.0.0
+  contact:
+    email: support@landly.ru
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Development server
+  - url: https://api.landly.ru/v1
+    description: Production server
+
+tags:
+  - name: auth
+    description: Аутентификация
+  - name: projects
+    description: Управление проектами
+  - name: generate
+    description: Генерация лендингов
+  - name: analytics
+    description: Аналитика
+
+paths:
+  /auth/signup:
+    post:
+      tags: [auth]
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Вход в систему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /projects:
+    get:
+      tags: [projects]
+      summary: Получить список проектов
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список проектов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectsList'
+
+    post:
+      tags: [projects]
+      summary: Создать новый проект
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, niche]
+              properties:
+                name:
+                  type: string
+                niche:
+                  type: string
+      responses:
+        '200':
+          description: Проект создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{id}:
+    get:
+      tags: [projects]
+      summary: Получить проект по ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Проект
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+    delete:
+      tags: [projects]
+      summary: Удалить проект
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Проект удалён
+
+  /projects/{id}/generate:
+    post:
+      tags: [generate]
+      summary: Сгенерировать лендинг
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+                  description: AI промпт для генерации
+                payment_url:
+                  type: string
+                  format: uri
+                  description: URL платёжной формы
+      responses:
+        '200':
+          description: Лендинг сгенерирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{id}/preview:
+    get:
+      tags: [generate]
+      summary: Получить preview лендинга
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: JSON-схема лендинга
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /projects/{id}/publish:
+    post:
+      tags: [generate]
+      summary: Опубликовать лендинг
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Лендинг опубликован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishResponse'
+
+  /analytics/{id}/event:
+    post:
+      tags: [analytics]
+      summary: Отправить событие аналитики
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_type, path]
+              properties:
+                event_type:
+                  type: string
+                  enum: [pageview, cta_click, pay_click, form_submit]
+                path:
+                  type: string
+                referrer:
+                  type: string
+      responses:
+        '204':
+          description: Событие зарегистрировано
+
+  /analytics/{id}/stats:
+    get:
+      tags: [analytics]
+      summary: Получить статистику проекта
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Статистика
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsStats'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        niche:
+          type: string
+        status:
+          type: string
+          enum: [draft, generated, published]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProjectsList:
+      type: object
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        total:
+          type: integer
+
+    PublishResponse:
+      type: object
+      properties:
+        subdomain:
+          type: string
+        public_url:
+          type: string
+          format: uri
+        published_at:
+          type: string
+          format: date-time
+
+    AnalyticsStats:
+      type: object
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        total_pageviews:
+          type: integer
+        total_cta_clicks:
+          type: integer
+        total_pay_clicks:
+          type: integer
+        unique_visitors:
+          type: integer
+
