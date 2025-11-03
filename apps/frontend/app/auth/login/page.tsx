@@ -1,8 +1,11 @@
-'use client'
+"use client"
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
+import { ArrowRight, Sparkles } from 'lucide-react'
+
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,62 +36,85 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Вход в Landly</CardTitle>
-          <CardDescription>Введите email и пароль для входа</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
-              <div className="bg-destructive/10 text-destructive px-4 py-2 rounded">
-                {error}
+    <div className="app-shell">
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 pb-16 pt-10 md:flex-row md:items-center md:justify-between md:px-10">
+        <div className="hidden w-full max-w-md rounded-3xl border border-white/50 bg-slate-900/90 p-10 text-slate-200 shadow-2xl backdrop-blur-2xl md:block">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-200">
+            <Sparkles className="h-4 w-4" /> Workspace preview
+          </div>
+          <h2 className="mt-6 text-3xl font-bold leading-snug text-white">
+            Workspace с контекстным чатом и предпросмотром. Вы входите — сразу видите последний проект.
+          </h2>
+          <ul className="mt-8 space-y-4 text-sm text-slate-300">
+            <li>• Генерируйте и редактируйте лендинг в чате GPT-стиля.</li>
+            <li>• Предпросмотр и опубликованный сайт используют одну схему.</li>
+            <li>• Публикация — статика, автоматически отдаётся из CDN.</li>
+          </ul>
+          <div className="mt-10 inline-flex items-center gap-2 text-sm font-semibold text-white">
+            Нет аккаунта? <Link href="/auth/signup" className="inline-flex items-center gap-1 underline-offset-4 hover:underline">Регистрация <ArrowRight className="h-4 w-4" /></Link>
+          </div>
+        </div>
+
+        <Card className="surface-card w-full border-white/40 p-2 md:max-w-md">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-bold text-slate-900">Вход в Landly</CardTitle>
+            <CardDescription className="text-sm text-slate-600">
+              Продолжайте работу с командами и лендингами. Мы отсортировали проекты по свежести — сразу окажетесь в актуальном.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {error}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium text-slate-700">
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  className="h-11 rounded-xl border border-slate-200/70 bg-white/90 text-sm shadow-sm focus-visible:ring-blue-400/50"
+                  {...register('email', { required: 'Email обязателен' })}
+                />
+                {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
               </div>
-            )}
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium mb-2">
-                Email
-              </label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                {...register('email', { required: 'Email обязателен' })}
-              />
-              {errors.email && (
-                <p className="text-sm text-destructive mt-1">{errors.email.message}</p>
-              )}
-            </div>
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium text-slate-700">
+                  Пароль
+                </label>
+                <Input
+                  id="password"
+                  type="password"
+                  className="h-11 rounded-xl border border-slate-200/70 bg-white/90 text-sm shadow-sm focus-visible:ring-blue-400/50"
+                  {...register('password', { required: 'Пароль обязателен' })}
+                />
+                {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+              </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium mb-2">
-                Пароль
-              </label>
-              <Input
-                id="password"
-                type="password"
-                {...register('password', { required: 'Пароль обязателен' })}
-              />
-              {errors.password && (
-                <p className="text-sm text-destructive mt-1">{errors.password.message}</p>
-              )}
-            </div>
+              <Button
+                type="submit"
+                className="h-11 w-full rounded-full bg-blue-600 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-700"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Вход...' : 'Войти'}
+              </Button>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Вход...' : 'Войти'}
-            </Button>
-
-            <div className="text-center text-sm">
-              <span className="text-gray-600">Нет аккаунта? </span>
-              <a href="/auth/signup" className="text-primary hover:underline">
-                Зарегистрироваться
-              </a>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              <div className="text-center text-sm text-slate-600">
+                Нет аккаунта?{' '}
+                <Link href="/auth/signup" className="font-semibold text-blue-600 hover:underline">
+                  Зарегистрируйтесь бесплатно
+                </Link>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

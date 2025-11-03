@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"os"
 	"path/filepath"
 	"strings"
+
+	_ "embed"
 
 	"github.com/google/uuid"
 )
@@ -17,6 +20,37 @@ import (
 type StaticRenderer struct {
 	tmpDir string
 }
+
+//go:embed assets/landing.css
+var landingCSS string
+
+const analyticsJS = `// Analytics tracking
+const projectId = window.location.pathname.split('/')[2];
+
+function track(eventType) {
+    fetch('/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            project_id: projectId,
+            event_type: eventType,
+            path: window.location.pathname,
+            referrer: document.referrer
+        })
+    });
+}
+
+// Track pageview
+track('pageview');
+
+// Track button clicks
+document.addEventListener('click', function(e) {
+    const trackType = e.target.dataset.track;
+    if (trackType) {
+        track(trackType);
+    }
+});
+`
 
 // NewStaticRenderer создаёт новый статический рендерер
 func NewStaticRenderer(tmpDir string) *StaticRenderer {
@@ -89,49 +123,58 @@ func (r *StaticRenderer) renderPage(buildDir string, page map[string]interface{}
 }
 
 func (r *StaticRenderer) generateHTML(title string, blocks []interface{}, schema map[string]interface{}) string {
-	// Простой HTML-шаблон
 	tmpl := `<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Title}}</title>
-    <link rel="stylesheet" href="/styles.css">
-    <script src="/analytics.js" defer></script>
+    <style>{{.InlineCSS}}</style>
+    <link rel="stylesheet" href="styles.css">
+    <script src="analytics.js" defer></script>
 </head>
-<body>
-    {{range .Blocks}}
-    <section class="block block-{{.Type}}" data-block="{{.Type}}">
-        {{.HTML}}
-    </section>
-    {{end}}
+<body class="landing-body">
+    <main class="landing" style="{{.ThemeStyle}}">
+        {{range .Sections}}
+            {{.}}
+        {{end}}
+    </main>
 </body>
 </html>`
 
-	type Block struct {
-		Type string
-		HTML template.HTML
+	palette := extractPalette(schema)
+	themeStyle := buildThemeStyle(palette)
+
+	sections := make([]template.HTML, 0, len(blocks))
+	for _, rawBlock := range blocks {
+		block, ok := rawBlock.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		blockType, _ := block["type"].(string)
+		props, _ := block["props"].(map[string]interface{})
+		sectionHTML := r.renderBlock(blockType, props, schema)
+		if sectionHTML == "" {
+			continue
+		}
+		sections = append(sections, template.HTML(sectionHTML))
+	}
+
+	if len(sections) == 0 {
+		sections = append(sections, template.HTML(`<section class="landing-section"><div class="landing-container"><div class="landing-empty-state">Контент появится после первой генерации</div></div></section>`))
 	}
 
 	data := struct {
-		Title  string
-		Blocks []Block
+		Title      string
+		ThemeStyle string
+		InlineCSS  template.CSS
+		Sections   []template.HTML
 	}{
-		Title:  title,
-		Blocks: make([]Block, 0),
-	}
-
-	// Рендерим каждый блок
-	for _, b := range blocks {
-		block := b.(map[string]interface{})
-		blockType := block["type"].(string)
-		props := block["props"].(map[string]interface{})
-
-		blockHTML := r.renderBlock(blockType, props, schema)
-		data.Blocks = append(data.Blocks, Block{
-			Type: blockType,
-			HTML: template.HTML(blockHTML),
-		})
+		Title:      title,
+		ThemeStyle: themeStyle,
+		InlineCSS:  template.CSS(landingCSS),
+		Sections:   sections,
 	}
 
 	t := template.Must(template.New("page").Parse(tmpl))
@@ -144,7 +187,6 @@ func (r *StaticRenderer) generateHTML(title string, blocks []interface{}, schema
 }
 
 func (r *StaticRenderer) renderBlock(blockType string, props map[string]interface{}, schema map[string]interface{}) string {
-	// Упрощённый рендеринг блоков
 	switch blockType {
 	case "hero":
 		return r.renderHero(props)
@@ -159,536 +201,302 @@ func (r *StaticRenderer) renderBlock(blockType string, props map[string]interfac
 	case "faq":
 		return r.renderFAQ(props)
 	default:
-		return fmt.Sprintf("<div>Block type: %s</div>", blockType)
+		return fmt.Sprintf(`<section class="landing-section" data-block="%s"><div class="landing-container"><div class="landing-empty-state">Блок %s пока не поддерживается</div></div></section>`, html.EscapeString(blockType), html.EscapeString(blockType))
 	}
 }
 
 func (r *StaticRenderer) renderHero(props map[string]interface{}) string {
-	headline := getStringProp(props, "headline", "Welcome")
-	subheadline := getStringProp(props, "subheadline", "")
-	ctaText := getStringProp(props, "ctaText", "Get Started")
+	headline := html.EscapeString(getStringProp(props, "headline", "Заголовок лендинга"))
+	subheadline := html.EscapeString(getStringProp(props, "subheadline", ""))
+	ctaText := html.EscapeString(getStringProp(props, "ctaText", ""))
+	ctaURL := html.EscapeString(getStringProp(props, "ctaUrl", "#"))
+	secondaryText := html.EscapeString(getStringProp(props, "secondaryCtaText", "Подробнее"))
+	secondaryURL := html.EscapeString(getStringProp(props, "secondaryCtaUrl", "#"))
+	eyebrow := html.EscapeString(getStringProp(props, "eyebrow", "Инновационная платформа"))
+	brand := html.EscapeString(getStringProp(props, "brand", "Landly"))
+	navActionText := html.EscapeString(getStringProp(props, "navActionText", "Войти"))
+	navActionURL := html.EscapeString(getStringProp(props, "navActionUrl", "#"))
+	heroImage := html.EscapeString(getStringProp(props, "image", ""))
+	imageAlt := html.EscapeString(getStringProp(props, "imageAlt", headline))
 
-	return fmt.Sprintf(`
-		<div class="hero">
-			<h1>%s</h1>
-			<p>%s</p>
-			<button class="cta-button" data-track="cta_click">%s</button>
-		</div>
-	`, headline, subheadline, ctaText)
+	navItems := toStringSlice(props["navItems"])
+	if len(navItems) == 0 {
+		navItems = []string{"Возможности", "Цены", "Отзывы", "Контакты"}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(`<section class="landing-section landing-section--hero" data-block="hero"><div class="landing-hero-overlay"></div><div class="landing-container">`)
+
+	sb.WriteString(`<div class="landing-topbar"><span class="landing-brand">`)
+	sb.WriteString(brand)
+	sb.WriteString(`</span><nav class="landing-nav">`)
+	for _, item := range navItems {
+		sb.WriteString(`<a href="#">`)
+		sb.WriteString(html.EscapeString(item))
+		sb.WriteString(`</a>`)
+	}
+	sb.WriteString(`</nav>`)
+	if navActionText != "" {
+		sb.WriteString(`<a class="landing-nav-action" href="`)
+		sb.WriteString(navActionURL)
+		sb.WriteString(`" target="_blank" rel="noopener noreferrer">`)
+		sb.WriteString(navActionText)
+		sb.WriteString(`</a>`)
+	}
+	sb.WriteString(`</div>`)
+
+	sb.WriteString(`<div class="landing-hero-grid"><div class="landing-hero-content">`)
+	if eyebrow != "" {
+		sb.WriteString(`<span class="landing-eyebrow">`)
+		sb.WriteString(eyebrow)
+		sb.WriteString(`</span>`)
+	}
+	sb.WriteString(`<h1>`)
+	sb.WriteString(headline)
+	sb.WriteString(`</h1>`)
+	if subheadline != "" {
+		sb.WriteString(`<p>`)
+		sb.WriteString(subheadline)
+		sb.WriteString(`</p>`)
+	}
+	if ctaText != "" || secondaryText != "" {
+		sb.WriteString(`<div class="landing-actions landing-actions--hero">`)
+		if ctaText != "" {
+			sb.WriteString(`<a class="landing-button landing-button--primary" data-track="cta_click" href="`)
+			sb.WriteString(ctaURL)
+			sb.WriteString(`">`)
+			sb.WriteString(ctaText)
+			sb.WriteString(`</a>`)
+		}
+		if secondaryText != "" {
+			sb.WriteString(`<a class="landing-button landing-button--ghost" data-track="cta_secondary" href="`)
+			sb.WriteString(secondaryURL)
+			sb.WriteString(`">`)
+			sb.WriteString(secondaryText)
+			sb.WriteString(`</a>`)
+		}
+		sb.WriteString(`</div>`)
+	}
+	sb.WriteString(`</div>`)
+
+	if heroImage != "" {
+		sb.WriteString(`<div class="landing-hero-media"><div class="landing-hero-media-card"><img src="`)
+		sb.WriteString(heroImage)
+		sb.WriteString(`" alt="`)
+		sb.WriteString(imageAlt)
+		sb.WriteString(`" /></div></div>`)
+	}
+
+	sb.WriteString(`</div></div></section>`)
+	return sb.String()
 }
 
 func (r *StaticRenderer) renderFeatures(props map[string]interface{}) string {
-	title := getStringProp(props, "title", "Features")
-	// Упрощённая реализация
-	return fmt.Sprintf(`<div class="features"><h2>%s</h2></div>`, title)
+	title := html.EscapeString(getStringProp(props, "title", "Наши преимущества"))
+	items := toSlice(props["items"])
+
+	var sb strings.Builder
+	sb.WriteString(`<section class="landing-section landing-section--features" data-block="features"><div class="landing-container">`)
+	sb.WriteString(fmt.Sprintf(`<div class="landing-section-header"><h2 class="landing-section-title">%s</h2></div>`, title))
+	sb.WriteString(`<div class="landing-features__grid">`)
+
+	if len(items) == 0 {
+		sb.WriteString(`<div class="landing-card landing-feature-card"><p class="landing-empty-state">Добавьте преимущества, чтобы показать их здесь</p></div>`)
+	} else {
+		for _, item := range items {
+			icon := html.EscapeString(getStringProp(item, "icon", ""))
+			itemTitle := html.EscapeString(getStringProp(item, "title", ""))
+			description := html.EscapeString(getStringProp(item, "description", ""))
+
+			sb.WriteString(`<div class="landing-card landing-feature-card">`)
+			if icon != "" {
+				sb.WriteString(`<div class="landing-feature-icon"><span>`)
+				sb.WriteString(icon)
+				sb.WriteString(`</span></div>`)
+			}
+			sb.WriteString(fmt.Sprintf(`<h3>%s</h3>`, itemTitle))
+			if description != "" {
+				sb.WriteString(fmt.Sprintf(`<p>%s</p>`, description))
+			}
+			sb.WriteString(`</div>`)
+		}
+	}
+
+	sb.WriteString(`</div></div></section>`)
+	return sb.String()
 }
 
 func (r *StaticRenderer) renderPricing(props map[string]interface{}, schema map[string]interface{}) string {
-	title := getStringProp(props, "title", "Pricing")
-	paymentURL := ""
+	title := html.EscapeString(getStringProp(props, "title", "Тарифы"))
+	plans := toSlice(props["plans"])
+	paymentMap, _ := schema["payment"].(map[string]interface{})
+	defaultButtonText := html.EscapeString(getStringProp(paymentMap, "buttonText", "Выбрать тариф"))
+	defaultURL := html.EscapeString(getStringProp(paymentMap, "url", ""))
 
-	if payment, ok := schema["payment"].(map[string]interface{}); ok {
-		paymentURL = getStringProp(payment, "url", "")
+	var sb strings.Builder
+	sb.WriteString(`<section class="landing-section landing-section--pricing" data-block="pricing"><div class="landing-container">`)
+	sb.WriteString(fmt.Sprintf(`<div class="landing-section-header"><h2 class="landing-section-title">%s</h2></div>`, title))
+	sb.WriteString(`<div class="landing-pricing__grid">`)
+
+	if len(plans) == 0 {
+		sb.WriteString(`<div class="landing-card"><div class="landing-empty-state">Добавьте тарифы в описании проекта</div></div>`)
+	} else {
+		for _, plan := range plans {
+			name := html.EscapeString(getStringProp(plan, "name", ""))
+			price := html.EscapeString(getStringProp(plan, "price", ""))
+			currency := html.EscapeString(getStringProp(plan, "currency", ""))
+			period := html.EscapeString(getStringProp(plan, "period", ""))
+			features := toStringSlice(plan["features"])
+			featured := getBoolProp(plan, "featured")
+			buttonText := html.EscapeString(getStringProp(plan, "buttonText", defaultButtonText))
+			buttonURL := html.EscapeString(getStringProp(plan, "url", defaultURL))
+
+			classes := "pricing-card"
+			if featured {
+				classes += " pricing-card--featured"
+			}
+
+			sb.WriteString(fmt.Sprintf(`<div class="%s" data-featured="%t">`, classes, featured))
+			sb.WriteString(fmt.Sprintf(`<div class="pricing-name">%s</div>`, name))
+			sb.WriteString(`<div class="pricing-price">`)
+			sb.WriteString(fmt.Sprintf(`<span class="pricing-price__value">%s</span>`, price))
+			sb.WriteString(`<span class="pricing-price__period">`)
+			sb.WriteString(currency)
+			if period != "" {
+				sb.WriteString(fmt.Sprintf(` / %s`, period))
+			}
+			sb.WriteString(`</span></div>`)
+
+			sb.WriteString(`<ul class="pricing-features">`)
+			for _, feature := range features {
+				sb.WriteString(`<li class="pricing-feature"><span class="pricing-feature-icon">✓</span><span>`)
+				sb.WriteString(html.EscapeString(feature))
+				sb.WriteString(`</span></li>`)
+			}
+			sb.WriteString(`</ul>`)
+
+			sb.WriteString(`<div class="pricing-action">`)
+			if buttonURL != "" {
+				sb.WriteString(fmt.Sprintf(`<a class="landing-button landing-button--secondary" data-track="pay_click" href="%s" target="_blank" rel="noopener">%s</a>`, buttonURL, buttonText))
+			} else {
+				sb.WriteString(fmt.Sprintf(`<button type="button" class="landing-button landing-button--secondary" data-track="pay_click">%s</button>`, buttonText))
+			}
+			sb.WriteString(`</div>`)
+			sb.WriteString(`</div>`)
+		}
 	}
 
-	html := fmt.Sprintf(`<div class="pricing"><h2>%s</h2>`, title)
-
-	if paymentURL != "" {
-		html += fmt.Sprintf(`<a href="%s" class="pay-button" data-track="pay_click">Оплатить</a>`, paymentURL)
-	}
-
-	html += `</div>`
-	return html
-}
-
-func (r *StaticRenderer) renderCTA(props map[string]interface{}) string {
-	title := getStringProp(props, "title", "Ready to start?")
-	buttonText := getStringProp(props, "buttonText", "Get Started")
-	description := getStringProp(props, "description", "")
-
-	html := fmt.Sprintf(`<div class="cta"><h2>%s</h2>`, title)
-	if description != "" {
-		html += fmt.Sprintf(`<p>%s</p>`, description)
-	}
-	html += fmt.Sprintf(`<button class="cta-button" data-track="cta_click">%s</button></div>`, buttonText)
-
-	return html
+	sb.WriteString(`</div></div></section>`)
+	return sb.String()
 }
 
 func (r *StaticRenderer) renderTestimonials(props map[string]interface{}) string {
-	title := getStringProp(props, "title", "Отзывы клиентов")
+	title := html.EscapeString(getStringProp(props, "title", "Отзывы клиентов"))
+	items := toSlice(props["items"])
 
-	html := fmt.Sprintf(`<div class="testimonials"><h2>%s</h2>`, title)
+	var sb strings.Builder
+	sb.WriteString(`<section class="landing-section landing-section--testimonials" data-block="testimonials"><div class="landing-container">`)
+	sb.WriteString(fmt.Sprintf(`<div class="landing-section-header"><h2 class="landing-section-title">%s</h2></div>`, title))
+	sb.WriteString(`<div class="landing-testimonials__grid">`)
 
-	if items, ok := props["items"].([]interface{}); ok {
-		html += `<div class="testimonials-grid">`
+	if len(items) == 0 {
+		sb.WriteString(`<div class="landing-card landing-testimonial-card"><p class="landing-empty-state">Добавьте отзывы, чтобы повысить доверие</p></div>`)
+	} else {
 		for _, item := range items {
-			if testimonial, ok := item.(map[string]interface{}); ok {
-				text := getStringProp(testimonial, "text", "")
-				author := getStringProp(testimonial, "author", "")
-				role := getStringProp(testimonial, "role", "")
-				rating := getStringProp(testimonial, "rating", "5")
+			text := html.EscapeString(getStringProp(item, "text", ""))
+			author := html.EscapeString(getStringProp(item, "author", ""))
+			role := html.EscapeString(getStringProp(item, "role", ""))
+			rating := html.EscapeString(getStringProp(item, "rating", ""))
 
-				html += fmt.Sprintf(`
-					<div class="testimonial">
-						<p>"%s"</p>
-						<div class="author">
-							<strong>%s</strong>
-							<span>%s</span>
-							<div class="rating">⭐ %s</div>
-						</div>
-					</div>
-				`, text, author, role, rating)
+			sb.WriteString(`<div class="landing-card landing-testimonial-card">`)
+			if text != "" {
+				sb.WriteString(fmt.Sprintf(`<p class="landing-testimonial-quote">“%s”</p>`, text))
 			}
+			sb.WriteString(`<div class="landing-testimonial-author">`)
+			if author != "" {
+				sb.WriteString(fmt.Sprintf(`<strong>%s</strong>`, author))
+			}
+			if role != "" {
+				sb.WriteString(fmt.Sprintf(`<span>%s</span>`, role))
+			}
+			if rating != "" {
+				sb.WriteString(fmt.Sprintf(`<span class="landing-testimonial-rating">⭐ %s</span>`, rating))
+			}
+			sb.WriteString(`</div></div>`)
 		}
-		html += `</div>`
 	}
 
-	html += `</div>`
-	return html
+	sb.WriteString(`</div></div></section>`)
+	return sb.String()
 }
 
 func (r *StaticRenderer) renderFAQ(props map[string]interface{}) string {
-	title := getStringProp(props, "title", "Частые вопросы")
+	title := html.EscapeString(getStringProp(props, "title", "Частые вопросы"))
+	items := toSlice(props["items"])
 
-	html := fmt.Sprintf(`<div class="faq"><h2>%s</h2>`, title)
+	var sb strings.Builder
+	sb.WriteString(`<section class="landing-section landing-section--faq" data-block="faq"><div class="landing-container">`)
+	sb.WriteString(fmt.Sprintf(`<div class="landing-section-header"><h2 class="landing-section-title">%s</h2></div>`, title))
+	sb.WriteString(`<div class="landing-faq__list">`)
 
-	if items, ok := props["items"].([]interface{}); ok {
-		html += `<div class="faq-list">`
+	if len(items) == 0 {
+		sb.WriteString(`<div class="faq-item"><div class="landing-empty-state">Добавьте вопросы и ответы, которые волнуют клиентов</div></div>`)
+	} else {
 		for _, item := range items {
-			if faq, ok := item.(map[string]interface{}); ok {
-				question := getStringProp(faq, "question", "")
-				answer := getStringProp(faq, "answer", "")
-
-				html += fmt.Sprintf(`
-					<div class="faq-item">
-						<h3>%s</h3>
-						<p>%s</p>
-					</div>
-				`, question, answer)
+			question := html.EscapeString(getStringProp(item, "question", ""))
+			answer := html.EscapeString(getStringProp(item, "answer", ""))
+			sb.WriteString(`<div class="faq-item">`)
+			sb.WriteString(fmt.Sprintf(`<div class="faq-question">%s</div>`, question))
+			if answer != "" {
+				sb.WriteString(fmt.Sprintf(`<div class="faq-answer">%s</div>`, answer))
 			}
+			sb.WriteString(`</div>`)
 		}
-		html += `</div>`
 	}
 
-	html += `</div>`
-	return html
+	sb.WriteString(`</div></div></section>`)
+	return sb.String()
+}
+
+func (r *StaticRenderer) renderCTA(props map[string]interface{}) string {
+	title := html.EscapeString(getStringProp(props, "title", "Готовы начать?"))
+	description := html.EscapeString(getStringProp(props, "description", ""))
+	buttonText := html.EscapeString(getStringProp(props, "buttonText", "Связаться"))
+	buttonURL := html.EscapeString(getStringProp(props, "buttonUrl", "#"))
+	secondaryText := html.EscapeString(getStringProp(props, "secondaryButtonText", ""))
+	secondaryURL := html.EscapeString(getStringProp(props, "secondaryButtonUrl", "#"))
+
+	var sb strings.Builder
+	sb.WriteString(`<section class="landing-section landing-section--cta" data-block="cta"><div class="landing-container">`)
+	sb.WriteString(`<div class="landing-section-header">`)
+	sb.WriteString(fmt.Sprintf(`<h2 class="landing-section-title">%s</h2>`, title))
+	if description != "" {
+		sb.WriteString(fmt.Sprintf(`<p>%s</p>`, description))
+	}
+	sb.WriteString(`</div>`)
+	sb.WriteString(`<div class="landing-actions landing-actions--center">`)
+	sb.WriteString(`<a class="landing-button landing-button--primary" data-track="cta_click" href="`)
+	sb.WriteString(buttonURL)
+	sb.WriteString(`">`)
+	sb.WriteString(buttonText)
+	sb.WriteString(`</a>`)
+	if secondaryText != "" {
+		sb.WriteString(`<a class="landing-button landing-button--ghost" data-track="cta_secondary" href="`)
+		sb.WriteString(secondaryURL)
+		sb.WriteString(`">`)
+		sb.WriteString(secondaryText)
+		sb.WriteString(`</a>`)
+	}
+	sb.WriteString(`</div></div></section>`)
+	return sb.String()
 }
 
 func (r *StaticRenderer) copyStaticAssets(buildDir string) error {
-	// Создаём красивый CSS
-	css := `
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.6;
-    color: #1a1a1a;
-    background: #ffffff;
-}
-
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
-}
-
-.block {
-    margin: 0;
-}
-
-/* Hero Section */
-.hero {
-    text-align: center;
-    padding: 120px 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    position: relative;
-    overflow: hidden;
-}
-
-.hero::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="white" opacity="0.1"/><circle cx="10" cy="60" r="0.5" fill="white" opacity="0.1"/><circle cx="90" cy="40" r="0.5" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
-    opacity: 0.3;
-}
-
-.hero h1 {
-    font-size: 4rem;
-    margin-bottom: 24px;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    position: relative;
-    z-index: 1;
-}
-
-.hero p {
-    font-size: 1.4rem;
-    margin-bottom: 40px;
-    opacity: 0.95;
-    font-weight: 400;
-    position: relative;
-    z-index: 1;
-}
-
-.cta-button, .pay-button {
-    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-    color: white;
-    border: none;
-    padding: 18px 36px;
-    font-size: 1.1rem;
-    font-weight: 600;
-    border-radius: 50px;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
-    position: relative;
-    z-index: 1;
-    text-decoration: none;
-    display: inline-block;
-}
-
-.cta-button:hover, .pay-button:hover {
-    background: linear-gradient(135deg, #ff5252 0%, #d63031 100%);
-    transform: translateY(-3px);
-    box-shadow: 0 15px 35px rgba(255, 107, 107, 0.4);
-}
-
-/* Features Section */
-.features {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 40px;
-    padding: 100px 0;
-    background: #fafbfc;
-}
-
-.feature {
-    text-align: center;
-    padding: 40px 30px;
-    border-radius: 20px;
-    background: white;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    border: 1px solid rgba(0,0,0,0.05);
-}
-
-.feature:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 20px 40px rgba(0,0,0,0.12);
-}
-
-.feature h3 {
-    color: #667eea;
-    margin-bottom: 20px;
-    font-size: 1.4rem;
-    font-weight: 700;
-}
-
-.feature p {
-    color: #666;
-    font-size: 1rem;
-    line-height: 1.7;
-}
-
-/* Pricing Section */
-.pricing {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 30px;
-    padding: 100px 0;
-    background: white;
-}
-
-.pricing-card {
-    background: white;
-    border: 2px solid #e9ecef;
-    border-radius: 20px;
-    padding: 50px 40px;
-    text-align: center;
-    position: relative;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-}
-
-.pricing-card:hover {
-    border-color: #667eea;
-    transform: translateY(-8px);
-    box-shadow: 0 25px 50px rgba(102, 126, 234, 0.15);
-}
-
-.pricing-card.featured {
-    border-color: #667eea;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    transform: scale(1.05);
-}
-
-.pricing-card.featured:hover {
-    transform: scale(1.05) translateY(-8px);
-}
-
-.price {
-    font-size: 3.5rem;
-    font-weight: 800;
-    color: #667eea;
-    margin: 20px 0;
-    letter-spacing: -0.02em;
-}
-
-.pricing-card.featured .price {
-    color: white;
-}
-
-.pricing-card h3 {
-    font-size: 1.5rem;
-    margin-bottom: 20px;
-    font-weight: 700;
-}
-
-.pricing-card ul {
-    list-style: none;
-    padding: 0;
-    margin: 30px 0;
-}
-
-.pricing-card li {
-    padding: 12px 0;
-    border-bottom: 1px solid #e9ecef;
-    font-size: 1rem;
-}
-
-.pricing-card.featured li {
-    border-bottom-color: rgba(255,255,255,0.2);
-}
-
-.pricing-card .cta-button {
-    width: 100%;
-    margin-top: 20px;
-}
-
-/* CTA Section */
-.cta {
-    text-align: center;
-    padding: 120px 0;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-}
-
-.cta h2 {
-    font-size: 3rem;
-    margin-bottom: 24px;
-    color: #1a1a1a;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-}
-
-.cta p {
-    font-size: 1.3rem;
-    margin-bottom: 40px;
-    color: #666;
-    font-weight: 400;
-}
-
-/* Testimonials Section */
-.testimonials {
-    padding: 100px 0;
-    background: #fafbfc;
-}
-
-.testimonials h2 {
-    text-align: center;
-    font-size: 2.5rem;
-    margin-bottom: 60px;
-    color: #1a1a1a;
-    font-weight: 800;
-}
-
-.testimonials-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 30px;
-}
-
-.testimonial {
-    background: white;
-    padding: 40px;
-    border-radius: 20px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-    transition: all 0.3s ease;
-    border: 1px solid rgba(0,0,0,0.05);
-}
-
-.testimonial:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 15px 40px rgba(0,0,0,0.15);
-}
-
-.testimonial p {
-    font-size: 1.1rem;
-    line-height: 1.7;
-    color: #333;
-    font-style: italic;
-    margin-bottom: 20px;
-}
-
-.author {
-    font-weight: 700;
-    color: #667eea;
-    margin-top: 20px;
-    font-size: 1rem;
-}
-
-.author strong {
-    display: block;
-    font-weight: bold;
-}
-
-.author span {
-    color: #666;
-    font-size: 0.9em;
-}
-
-.rating {
-    color: #ffc107;
-    margin-top: 10px;
-    font-size: 1.2rem;
-}
-
-/* FAQ Section */
-.faq {
-    padding: 100px 0;
-    background: white;
-}
-
-.faq h2 {
-    text-align: center;
-    font-size: 2.5rem;
-    margin-bottom: 60px;
-    color: #1a1a1a;
-    font-weight: 800;
-}
-
-.faq-list {
-    max-width: 800px;
-    margin: 0 auto;
-}
-
-.faq-item {
-    background: white;
-    margin-bottom: 20px;
-    border-radius: 15px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    border: 1px solid rgba(0,0,0,0.05);
-    transition: all 0.3s ease;
-}
-
-.faq-item:hover {
-    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
-}
-
-.faq-item h3 {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 25px 30px;
-    font-weight: 700;
-    cursor: pointer;
-    font-size: 1.1rem;
-    transition: all 0.3s ease;
-    margin-bottom: 0;
-}
-
-.faq-item h3:hover {
-    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-.faq-item p {
-    padding: 30px;
-    background: white;
-    font-size: 1rem;
-    line-height: 1.7;
-    color: #555;
-    margin-bottom: 0;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .hero h1 {
-        font-size: 2.5rem;
-    }
-    
-    .hero p {
-        font-size: 1.2rem;
-    }
-    
-    .features {
-        grid-template-columns: 1fr;
-        padding: 60px 0;
-    }
-    
-    .pricing {
-        grid-template-columns: 1fr;
-        padding: 60px 0;
-    }
-    
-    .pricing-card.featured {
-        transform: none;
-    }
-    
-    .cta h2 {
-        font-size: 2rem;
-    }
-    
-    .testimonials-grid {
-        grid-template-columns: 1fr;
-    }
-}
-`
-
-	// Создаём базовый JS для аналитики
-	js := `
-// Analytics tracking
-const projectId = window.location.hostname.split('.')[0];
-
-function track(eventType) {
-    fetch('/api/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            project_id: projectId,
-            event_type: eventType,
-            path: window.location.pathname,
-            referrer: document.referrer
-        })
-    });
-}
-
-// Track pageview
-track('pageview');
-
-// Track button clicks
-document.addEventListener('click', function(e) {
-    const trackType = e.target.dataset.track;
-    if (trackType) {
-        track(trackType);
-    }
-});
-`
-
-	if err := os.WriteFile(filepath.Join(buildDir, "styles.css"), []byte(css), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(buildDir, "styles.css"), []byte(landingCSS), 0644); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(buildDir, "analytics.js"), []byte(js), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(buildDir, "analytics.js"), []byte(analyticsJS), 0644); err != nil {
 		return err
 	}
 
@@ -700,4 +508,96 @@ func getStringProp(props map[string]interface{}, key, defaultValue string) strin
 		return val
 	}
 	return defaultValue
+}
+
+type paletteValues struct {
+	Primary    string
+	Secondary  string
+	Accent     string
+	Background string
+	Text       string
+}
+
+func extractPalette(schema map[string]interface{}) paletteValues {
+	palette := paletteValues{
+		Primary:    "#2563EB",
+		Secondary:  "#7C3AED",
+		Accent:     "#F97316",
+		Background: "#FFFFFF",
+		Text:       "#1F2937",
+	}
+
+	if theme, ok := schema["theme"].(map[string]interface{}); ok {
+		if rawPalette, ok := theme["palette"].(map[string]interface{}); ok {
+			if val := getStringProp(rawPalette, "primary", palette.Primary); val != "" {
+				palette.Primary = val
+			}
+			if val := getStringProp(rawPalette, "secondary", palette.Secondary); val != "" {
+				palette.Secondary = val
+			}
+			if val := getStringProp(rawPalette, "accent", palette.Accent); val != "" {
+				palette.Accent = val
+			}
+			if val := getStringProp(rawPalette, "background", palette.Background); val != "" {
+				palette.Background = val
+			}
+			if val := getStringProp(rawPalette, "text", palette.Text); val != "" {
+				palette.Text = val
+			}
+		}
+	}
+
+	return palette
+}
+
+func buildThemeStyle(p paletteValues) string {
+	return fmt.Sprintf("--landing-primary:%s;--landing-secondary:%s;--landing-accent:%s;--landing-background:%s;--landing-text:%s;",
+		html.EscapeString(p.Primary),
+		html.EscapeString(p.Secondary),
+		html.EscapeString(p.Accent),
+		html.EscapeString(p.Background),
+		html.EscapeString(p.Text),
+	)
+}
+
+func toSlice(value interface{}) []map[string]interface{} {
+	items, ok := value.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	result := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		if m, ok := item.(map[string]interface{}); ok {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
+func toStringSlice(value interface{}) []string {
+	switch v := value.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func getBoolProp(props map[string]interface{}, key string) bool {
+	if val, ok := props[key].(bool); ok {
+		return val
+	}
+	if val, ok := props[key].(string); ok {
+		return strings.EqualFold(val, "true")
+	}
+	return false
 }

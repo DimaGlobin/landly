@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	domain "github.com/landly/backend/internal/models"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -19,6 +20,7 @@ type MinioClient interface {
 	MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error
 	SetBucketPolicy(ctx context.Context, bucketName, policy string) error
 	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) (minio.UploadInfo, error)
+	GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (*minio.Object, error)
 	EndpointURL() *url.URL
 	RemoveObject(ctx context.Context, bucketName, objectName string, opts minio.RemoveObjectOptions) error
 }
@@ -147,6 +149,33 @@ func (c *Client) GetPublicURL(remotePath string) string {
 	}
 
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, c.minio.EndpointURL().Host, c.bucket, remotePath)
+}
+
+// GetObject возвращает содержимое объекта и его content-type
+func (c *Client) GetObject(ctx context.Context, remotePath string) (io.ReadCloser, string, error) {
+	object, err := c.minio.GetObject(ctx, c.bucket, remotePath, minio.GetObjectOptions{})
+	if err != nil {
+		if resp := minio.ToErrorResponse(err); resp.Code == "NoSuchKey" {
+			return nil, "", domain.ErrNotFound
+		}
+		return nil, "", err
+	}
+
+	info, err := object.Stat()
+	if err != nil {
+		object.Close()
+		if resp := minio.ToErrorResponse(err); resp.Code == "NoSuchKey" {
+			return nil, "", domain.ErrNotFound
+		}
+		return nil, "", err
+	}
+
+	contentType := info.ContentType
+	if contentType == "" {
+		contentType = getContentType(remotePath)
+	}
+
+	return object, contentType, nil
 }
 
 // Delete удаляет объект

@@ -88,6 +88,26 @@ services:
       - backend
     restart: unless-stopped
 
+  backend-builder:
+    profiles: ["test"]
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile.backend
+      target: builder
+    working_dir: /build
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["go test ./..."]
+    environment: []
+
+  frontend-tester:
+    profiles: ["test"]
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile.frontend
+      target: builder
+    working_dir: /app
+    entrypoint: ["npm", "run", "test:ci"]
+
 volumes:
   postgres_data:
   redis_data:

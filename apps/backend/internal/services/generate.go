@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +23,7 @@ type GenerateService struct {
 	projectRepo     domain.ProjectRepository
 	integrationRepo domain.IntegrationRepository
 	sessionRepo     domain.GenerationSessionRepository
+	messageRepo     domain.GenerationMessageRepository
 	aiClient        AIClient
 }
 
@@ -29,12 +32,14 @@ func NewGenerateService(
 	projectRepo domain.ProjectRepository,
 	integrationRepo domain.IntegrationRepository,
 	sessionRepo domain.GenerationSessionRepository,
+	messageRepo domain.GenerationMessageRepository,
 	aiClient AIClient,
 ) *GenerateService {
 	return &GenerateService{
 		projectRepo:     projectRepo,
 		integrationRepo: integrationRepo,
 		sessionRepo:     sessionRepo,
+		messageRepo:     messageRepo,
 		aiClient:        aiClient,
 	}
 }
@@ -237,6 +242,212 @@ func (s *GenerateService) GetPreview(ctx context.Context, userID, projectID uuid
 	}
 
 	return schema, nil
+}
+
+// GetChatHistory возвращает текущую сессию и историю сообщений для проекта
+func (s *GenerateService) GetChatHistory(ctx context.Context, userID, projectID string) (*domain.GenerationSession, []*domain.GenerationMessage, error) {
+	project, err := s.ensureProjectOwnership(ctx, userID, projectID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	session, err := s.ensureSessionForProject(ctx, project)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	messages, err := s.messageRepo.ListBySession(ctx, session.ID.String())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return session, messages, nil
+}
+
+// SendChatMessage обрабатывает новое сообщение пользователя и возвращает обновлённую историю
+func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID, content string) (*domain.GenerationSession, []*domain.GenerationMessage, error) {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return nil, nil, domain.ErrBadRequest.WithMessage("message content is required")
+	}
+
+	project, err := s.ensureProjectOwnership(ctx, userID, projectID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	session, err := s.ensureSessionForProject(ctx, project)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	now := time.Now()
+	userMessage := &domain.GenerationMessage{
+		ID:         uuid.New(),
+		SessionID:  session.ID,
+		Role:       domain.MessageRoleUser,
+		Content:    trimmed,
+		Metadata:   "",
+		TokensUsed: 0,
+		CreatedAt:  now,
+	}
+
+	if err := s.messageRepo.Create(ctx, userMessage); err != nil {
+		return nil, nil, err
+	}
+
+	messages, err := s.messageRepo.ListBySession(ctx, session.ID.String())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	prompt := s.buildChatPrompt(session, messages)
+
+	log := logger.WithContext(ctx).With(
+		zap.String("project_id", project.ID.String()),
+		zap.String("user_id", project.UserID.String()),
+	)
+
+	log.Info("generating landing schema via chat", zap.String("prompt_snippet", truncateForLog(prompt)))
+
+	schemaJSON, err := s.aiClient.GenerateLandingSchema(ctx, prompt, "")
+	if err != nil {
+		log.Error("chat generation failed", zap.Error(err))
+		session.Status = domain.GenerationStatusFailed
+		session.UpdatedAt = now
+		session.CompletedAt = ptrTime(now)
+		_ = s.sessionRepo.Update(ctx, session)
+		return nil, nil, domain.ErrInternal.WithError(err)
+	}
+
+	if err := s.projectRepo.UpdateSchema(ctx, project.ID.String(), schemaJSON); err != nil {
+		log.Error("failed to persist generated schema", zap.Error(err))
+		return nil, nil, err
+	}
+
+	project.SchemaJSON = schemaJSON
+	project.Status = domain.ProjectStatusGenerated
+	project.UpdatedAt = now
+
+	session.Prompt = trimmed
+	session.Status = domain.GenerationStatusCompleted
+	session.SchemaJSON = schemaJSON
+	session.CompletedAt = ptrTime(now)
+	session.UpdatedAt = now
+	if err := s.sessionRepo.Update(ctx, session); err != nil {
+		log.Error("failed to update generation session", zap.Error(err))
+		return nil, nil, err
+	}
+
+	assistantContent := fmt.Sprintf("Готово! Я обновил лендинг согласно запросу: \"%s\". Посмотри предпросмотр справа.", truncateUserContent(trimmed))
+	assistantMessage := &domain.GenerationMessage{
+		ID:         uuid.New(),
+		SessionID:  session.ID,
+		Role:       domain.MessageRoleAssistant,
+		Content:    assistantContent,
+		Metadata:   fmt.Sprintf("{\"schema_updated\":true,\"schema_length\":%d}", len(schemaJSON)),
+		TokensUsed: 0,
+		CreatedAt:  time.Now(),
+	}
+
+	if err := s.messageRepo.Create(ctx, assistantMessage); err != nil {
+		log.Error("failed to save assistant message", zap.Error(err))
+		return nil, nil, err
+	}
+
+	messages = append(messages, assistantMessage)
+
+	log.Info("chat generation completed successfully",
+		zap.Int("messages_total", len(messages)),
+	)
+
+	return session, messages, nil
+}
+
+func (s *GenerateService) ensureProjectOwnership(ctx context.Context, userID, projectID string) (*domain.Project, error) {
+	project, err := s.projectRepo.GetByID(ctx, projectID)
+	if err != nil {
+		return nil, domain.ErrNotFound.WithMessage("project not found")
+	}
+
+	if project.UserID.String() != userID {
+		return nil, domain.ErrForbidden.WithMessage("access denied")
+	}
+
+	return project, nil
+}
+
+func (s *GenerateService) ensureSessionForProject(ctx context.Context, project *domain.Project) (*domain.GenerationSession, error) {
+	sessions, err := s.sessionRepo.GetByProjectID(ctx, project.ID.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(sessions) > 0 {
+		session := sessions[0]
+		if session.SchemaJSON == "" {
+			session.SchemaJSON = project.SchemaJSON
+		}
+		return session, nil
+	}
+
+	session := domain.NewGenerationSession(project.ID, "", "gpt-4")
+	session.SchemaJSON = project.SchemaJSON
+	session.CreatedAt = time.Now()
+	session.UpdatedAt = session.CreatedAt
+
+	if err := s.sessionRepo.Create(ctx, session); err != nil {
+		return nil, domain.ErrInternal.WithError(err)
+	}
+
+	return session, nil
+}
+
+func (s *GenerateService) buildChatPrompt(session *domain.GenerationSession, messages []*domain.GenerationMessage) string {
+	var builder strings.Builder
+
+	if session.SchemaJSON != "" {
+		builder.WriteString("Текущая схема лендинга (JSON):\n")
+		builder.WriteString(session.SchemaJSON)
+		builder.WriteString("\n\n")
+	}
+
+	builder.WriteString("История диалога:\n")
+	for _, msg := range messages {
+		label := "Система"
+		switch msg.Role {
+		case domain.MessageRoleUser:
+			label = "Пользователь"
+		case domain.MessageRoleAssistant:
+			label = "Ассистент"
+		}
+		builder.WriteString(label)
+		builder.WriteString(": ")
+		builder.WriteString(msg.Content)
+		builder.WriteString("\n\n")
+	}
+
+	builder.WriteString("На основе истории обнови JSON-схему лендинга. Верни только JSON без дополнительного текста.")
+
+	return builder.String()
+}
+
+func truncateUserContent(content string) string {
+	const limit = 120
+	runes := []rune(content)
+	if len(runes) <= limit {
+		return content
+	}
+	return string(runes[:limit]) + "..."
+}
+
+func truncateForLog(content string) string {
+	const limit = 200
+	runes := []rune(content)
+	if len(runes) <= limit {
+		return content
+	}
+	return string(runes[:limit]) + "..."
 }
 
 func ptrTime(t time.Time) *time.Time {

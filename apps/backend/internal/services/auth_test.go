@@ -19,7 +19,7 @@ import (
 func TestAuthService_SignUp_CreateUserAndGenerateTokens(t *testing.T) {
 	ctx := context.Background()
 	userRepo := new(mocks.UserRepositoryMock)
-	authService := NewAuthService(userRepo, "super-secret")
+	authService := NewAuthService(userRepo, "super-secret", 15*time.Minute, 7*24*time.Hour)
 
 	userRepo.On("GetByEmail", ctx, "user@example.com").Return(nil, errors.New("not found"))
 	userRepo.On("Create", ctx, mock.MatchedBy(func(user *domain.User) bool {
@@ -34,7 +34,7 @@ func TestAuthService_SignUp_CreateUserAndGenerateTokens(t *testing.T) {
 	require.NotNil(t, tokens)
 	assert.NotEmpty(t, tokens.AccessToken)
 	assert.NotEmpty(t, tokens.RefreshToken)
-	assert.WithinDuration(t, time.Now().Add(24*time.Hour), tokens.ExpiresAt, 5*time.Second)
+	assert.WithinDuration(t, time.Now().Add(15*time.Minute), tokens.ExpiresAt, 5*time.Second)
 
 	userRepo.AssertExpectations(t)
 }
@@ -42,7 +42,7 @@ func TestAuthService_SignUp_CreateUserAndGenerateTokens(t *testing.T) {
 func TestAuthService_SignIn_InvalidPassword(t *testing.T) {
 	ctx := context.Background()
 	userRepo := new(mocks.UserRepositoryMock)
-	authService := NewAuthService(userRepo, "secret")
+	authService := NewAuthService(userRepo, "secret", 15*time.Minute, 7*24*time.Hour)
 
 	hash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestAuthService_SignIn_InvalidPassword(t *testing.T) {
 func TestAuthService_ValidateToken_Success(t *testing.T) {
 	ctx := context.Background()
 	userRepo := new(mocks.UserRepositoryMock)
-	authService := NewAuthService(userRepo, "secret")
+	authService := NewAuthService(userRepo, "secret", 15*time.Minute, 7*24*time.Hour)
 
 	user := &domain.User{ID: uuid.New(), Email: "user@example.com"}
 	tokens, err := authService.generateTokens(user.ID)
@@ -74,7 +74,7 @@ func TestAuthService_ValidateToken_Success(t *testing.T) {
 func TestAuthService_RefreshToken_Invalid(t *testing.T) {
 	ctx := context.Background()
 	userRepo := new(mocks.UserRepositoryMock)
-	authService := NewAuthService(userRepo, "secret")
+	authService := NewAuthService(userRepo, "secret", 15*time.Minute, 7*24*time.Hour)
 
 	resp, err := authService.RefreshToken(ctx, "bad-token")
 	assert.Error(t, err)

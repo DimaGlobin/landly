@@ -17,6 +17,32 @@ export interface ProjectPublishInfo {
   last_published_at?: string
 }
 
+export interface ChatSession {
+  id: string
+  project_id: string
+  status: 'pending' | 'completed' | 'failed'
+  schema_json?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export type ChatMessageRole = 'user' | 'assistant' | 'system'
+
+export interface ChatMessage {
+  id: string
+  role: ChatMessageRole
+  content: string
+  metadata?: string
+  tokens_used: number
+  created_at: string
+}
+
+export interface ChatHistoryResponse {
+  session: ChatSession
+  messages: ChatMessage[]
+}
+
 // Landing schema types
 export interface LandingSchema {
   version: string

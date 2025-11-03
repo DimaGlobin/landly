@@ -23,12 +23,13 @@ func TestGenerateService_Integration_GenerateSite(t *testing.T) {
 	projectRepo := repositories.NewProjectRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	integrationRepo := repositories.NewIntegrationRepository(qb)
+	messageRepo := repositories.NewGenerationMessageRepository(qb)
 
 	user, _ := testhelpers.CreateTestUser(t, qb, "", "")
 	project := testhelpers.CreateTestProject(t, qb, user.ID, "Integration Test Project", "SaaS")
 
 	aiClient := ai.NewMockClient()
-	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, aiClient)
+	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
 
 	ctx := context.Background()
 	req := &domain.GenerateRequest{
@@ -58,12 +59,13 @@ func TestGenerateService_Integration_GetGenerationStatusAndResult(t *testing.T) 
 	projectRepo := repositories.NewProjectRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	integrationRepo := repositories.NewIntegrationRepository(qb)
+	messageRepo := repositories.NewGenerationMessageRepository(qb)
 
 	user, _ := testhelpers.CreateTestUser(t, qb, "", "")
 	project := testhelpers.CreateTestProject(t, qb, user.ID, "Status Test Project", "Analytics")
 
 	aiClient := ai.NewMockClient()
-	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, aiClient)
+	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
 
 	ctx := context.Background()
 	req := &domain.GenerateRequest{
@@ -95,6 +97,7 @@ func TestGenerateService_Integration_GenerateSiteAIError(t *testing.T) {
 	projectRepo := repositories.NewProjectRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	integrationRepo := repositories.NewIntegrationRepository(qb)
+	messageRepo := repositories.NewGenerationMessageRepository(qb)
 
 	user, _ := testhelpers.CreateTestUser(t, qb, "", "")
 	project := testhelpers.CreateTestProject(t, qb, user.ID, "Error Test Project", "Marketing")
@@ -105,7 +108,7 @@ func TestGenerateService_Integration_GenerateSiteAIError(t *testing.T) {
 		PaymentURL: "https://example.com/fail",
 	}
 
-	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, failingAIClient{})
+	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, failingAIClient{})
 
 	session, err := generateService.GenerateSite(ctx, user.ID.String(), project.ID.String(), req)
 	require.Error(t, err)

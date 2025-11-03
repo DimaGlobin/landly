@@ -99,6 +99,16 @@ class ApiClient {
     return data
   }
 
+  async getChatHistory(projectId: string) {
+    const { data } = await this.client.get(`/v1/projects/${projectId}/chat`)
+    return data
+  }
+
+  async sendChatMessage(projectId: string, content: string) {
+    const { data } = await this.client.post(`/v1/projects/${projectId}/chat`, { content })
+    return data
+  }
+
   async unpublishProject(projectId: string) {
     await this.client.delete(`/v1/projects/${projectId}/publish`)
   }

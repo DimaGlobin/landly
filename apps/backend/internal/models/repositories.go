@@ -74,6 +74,13 @@ type GenerationSessionRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// GenerationMessageRepository интерфейс репозитория сообщений генерации
+type GenerationMessageRepository interface {
+	Create(ctx context.Context, message *GenerationMessage) error
+	ListBySession(ctx context.Context, sessionID string) ([]*GenerationMessage, error)
+	DeleteBySession(ctx context.Context, sessionID string) error
+}
+
 // AnalyticsRepository интерфейс репозитория аналитики
 type AnalyticsRepository interface {
 	TrackEvent(ctx context.Context, event *AnalyticsEvent) error

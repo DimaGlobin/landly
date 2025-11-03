@@ -36,6 +36,12 @@ func (m *MinioClientMock) PutObject(ctx context.Context, bucketName, objectName 
 	return minio.UploadInfo{}, args.Error(1)
 }
 
+func (m *MinioClientMock) GetObject(ctx context.Context, bucketName, objectName string, opts minio.GetObjectOptions) (*minio.Object, error) {
+	args := m.Called(ctx, bucketName, objectName, opts)
+	object, _ := args.Get(0).(*minio.Object)
+	return object, args.Error(1)
+}
+
 func (m *MinioClientMock) EndpointURL() *url.URL {
 	args := m.Called()
 	if endpoint, ok := args.Get(0).(*url.URL); ok {
@@ -48,4 +54,3 @@ func (m *MinioClientMock) RemoveObject(ctx context.Context, bucketName, objectNa
 	args := m.Called(ctx, bucketName, objectName, opts)
 	return args.Error(0)
 }
-

@@ -40,6 +40,17 @@ type GenerationSession struct {
 	UpdatedAt   time.Time  `db:"updated_at" json:"updated_at"`
 }
 
+// GenerationMessage представляет сообщение в рамках сессии генерации
+type GenerationMessage struct {
+	ID         uuid.UUID `db:"id" json:"id"`
+	SessionID  uuid.UUID `db:"session_id" json:"session_id"`
+	Role       string    `db:"role" json:"role"`
+	Content    string    `db:"content" json:"content"`
+	Metadata   string    `db:"metadata" json:"metadata"`
+	TokensUsed int       `db:"tokens_used" json:"tokens_used"`
+	CreatedAt  time.Time `db:"created_at" json:"created_at"`
+}
+
 // PublishTarget представляет цель публикации
 type PublishTarget struct {
 	ID              uuid.UUID  `db:"id" json:"id"`
@@ -86,6 +97,10 @@ const (
 	PublishStatusDraft     = "draft"
 	PublishStatusPublished = "published"
 	PublishStatusFailed    = "failed"
+
+	MessageRoleUser      = "user"
+	MessageRoleAssistant = "assistant"
+	MessageRoleSystem    = "system"
 
 	IntegrationTypeStripe = "stripe"
 	IntegrationTypePayPal = "paypal"

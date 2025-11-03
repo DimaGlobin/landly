@@ -2,7 +2,10 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,6 +24,7 @@ type Renderer interface {
 type Publisher interface {
 	Upload(ctx context.Context, localPath, remotePath string) error
 	GetPublicURL(remotePath string) string
+	GetObject(ctx context.Context, remotePath string) (io.ReadCloser, string, error)
 }
 
 // PublishUserRepository интерфейс для получения пользователя
@@ -64,6 +68,35 @@ func NewPublishService(
 	}
 }
 
+func generateSubdomain(projectName string, projectID uuid.UUID) string {
+	prefix := strings.ToLower(strings.TrimSpace(projectName))
+	if prefix == "" {
+		prefix = "project"
+	}
+
+	var builder strings.Builder
+	lastHyphen := false
+
+	for _, r := range prefix {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastHyphen = false
+		} else {
+			if !lastHyphen {
+				builder.WriteRune('-')
+				lastHyphen = true
+			}
+		}
+	}
+
+	slug := strings.Trim(builder.String(), "-")
+	if slug == "" {
+		slug = "project"
+	}
+
+	return fmt.Sprintf("%s-%s", slug, projectID.String()[:8])
+}
+
 func (s *PublishService) publicBaseURL() string {
 	if s.publicBase != "" {
 		return s.publicBase
@@ -93,13 +126,25 @@ func (s *PublishService) PublishSite(ctx context.Context, userID, projectID stri
 		return nil, domain.ErrForbidden.WithMessage("access denied")
 	}
 
-	// Создаем цель публикации с использованием username
-	// Формат: <base-url>/<subdomain>
-	subdomain := fmt.Sprintf("%s-%s", strings.ToLower(project.Name), projectUUID.String()[:8])
-	target := domain.NewPublishTarget(projectUUID, subdomain)
+	// Создаем или обновляем цель публикации с использованием имени проекта
+	// Формат: <base-url>/sites/<subdomain>
+	subdomain := generateSubdomain(project.Name, projectUUID)
+	var target *domain.PublishTarget
 
-	if err := s.publishTargetRepo.Create(ctx, target); err != nil {
-		return nil, domain.ErrInternal.WithError(err)
+	existingTarget, err := s.publishTargetRepo.GetByProjectID(ctx, projectUUID.String())
+	if err == nil && existingTarget != nil {
+		existingTarget.Subdomain = subdomain
+		existingTarget.Status = domain.PublishStatusDraft
+		existingTarget.UpdatedAt = time.Now()
+		if err := s.publishTargetRepo.Update(ctx, existingTarget); err != nil {
+			return nil, domain.ErrInternal.WithError(err)
+		}
+		target = existingTarget
+	} else {
+		target = domain.NewPublishTarget(projectUUID, subdomain)
+		if err := s.publishTargetRepo.Create(ctx, target); err != nil {
+			return nil, domain.ErrInternal.WithError(err)
+		}
 	}
 
 	// Публикуем в фоне
@@ -157,20 +202,8 @@ func (s *PublishService) PublishProject(ctx context.Context, userID, projectID u
 		return nil, domain.ErrBadRequest.WithMessage("project schema is empty")
 	}
 
-	// Получаем пользователя для генерации username
-	user, err := s.userRepo.GetByID(ctx, userID.String())
-	if err != nil {
-		return nil, domain.ErrInternal.WithMessage("failed to get user")
-	}
-
-	// Генерируем username из email (все до @)
-	username := strings.Split(user.Email, "@")[0]
-	username = strings.ToLower(username)
-	username = strings.ReplaceAll(username, ".", "-")
-	username = strings.ReplaceAll(username, "_", "-")
-
-	// Генерируем уникальный subdomain на основе username
-	subdomain := fmt.Sprintf("%s-%s", username, projectID.String()[:8])
+	// Генерируем уникальный subdomain на основе названия проекта
+	subdomain := generateSubdomain(project.Name, projectID)
 
 	// Создаём или обновляем цель публикации
 	target := &domain.PublishTarget{
@@ -205,7 +238,7 @@ func (s *PublishService) PublishProject(ctx context.Context, userID, projectID u
 	}
 
 	// Загружаем файлы в S3/CDN
-	remotePath := fmt.Sprintf("sites/%s", projectID.String())
+	remotePath := fmt.Sprintf("sites/%s", subdomain)
 	if err := s.publisher.Upload(ctx, buildDir, remotePath); err != nil {
 		return nil, domain.ErrInternal.WithMessage("failed to upload to storage")
 	}
@@ -217,7 +250,7 @@ func (s *PublishService) PublishProject(ctx context.Context, userID, projectID u
 		return nil, domain.ErrInternal.WithError(err)
 	}
 
-	publicURL := fmt.Sprintf("%s/%s", s.publicBaseURL(), subdomain)
+	publicURL := fmt.Sprintf("%s/sites/%s", s.publicBaseURL(), subdomain)
 
 	return &PublishResult{
 		Subdomain:   subdomain,
@@ -257,6 +290,57 @@ func (s *PublishService) UnpublishProject(ctx context.Context, userID, projectID
 	}
 
 	return nil
+}
+
+// ServePublished возвращает содержимое опубликованного проекта для указанного ресурса
+func (s *PublishService) ServePublished(ctx context.Context, subdomain, assetPath string) (io.ReadCloser, string, error) {
+	cleanPath := strings.TrimPrefix(assetPath, "/")
+	if cleanPath == "" {
+		cleanPath = "index.html"
+	}
+	cleanPath = filepath.Clean(cleanPath)
+	if strings.Contains(cleanPath, "..") {
+		return nil, "", domain.ErrForbidden
+	}
+
+	target, targetErr := s.publishTargetRepo.GetBySubdomain(ctx, subdomain)
+	if targetErr != nil && !errors.Is(targetErr, domain.ErrNotFound) {
+		return nil, "", targetErr
+	}
+
+	seen := make(map[string]struct{})
+	var searchBases []string
+	addBase := func(base string) {
+		if _, ok := seen[base]; ok {
+			return
+		}
+		seen[base] = struct{}{}
+		searchBases = append(searchBases, base)
+	}
+
+	addBase(fmt.Sprintf("sites/%s", subdomain))
+
+	if targetErr == nil && target != nil {
+		if !strings.EqualFold(target.Subdomain, subdomain) {
+			addBase(fmt.Sprintf("sites/%s", target.Subdomain))
+		}
+		addBase(fmt.Sprintf("sites/%s", target.ProjectID.String()))
+	}
+
+	for _, basePath := range searchBases {
+		remotePath := filepath.Join(basePath, cleanPath)
+
+		reader, contentType, err := s.publisher.GetObject(ctx, remotePath)
+		if err == nil {
+			return reader, contentType, nil
+		}
+
+		if !errors.Is(err, domain.ErrNotFound) {
+			return nil, "", err
+		}
+	}
+
+	return nil, "", domain.ErrNotFound
 }
 
 func (s *PublishService) publishInBackground(ctx context.Context, target *domain.PublishTarget, userID, projectID uuid.UUID, log logger.Logger) {

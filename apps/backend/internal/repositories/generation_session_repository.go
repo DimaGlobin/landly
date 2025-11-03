@@ -98,6 +98,7 @@ func (r *generationSessionRepository) GetByProjectID(ctx context.Context, projec
 // Update обновляет сессию
 func (r *generationSessionRepository) Update(ctx context.Context, session *domain.GenerationSession) error {
 	query := r.qb.Update("generation_sessions").
+		Set("prompt", session.Prompt).
 		Set("status", session.Status).
 		Set("schema_json", session.SchemaJSON).
 		Set("completed_at", session.CompletedAt).

@@ -74,7 +74,9 @@ func (r *publishTargetRepository) GetByProjectID(ctx context.Context, projectID 
 
 	query := r.qb.Select("id", "project_id", "subdomain", "status", "last_published_at", "created_at", "updated_at").
 		From("publish_targets").
-		Where(squirrel.Eq{"project_id": projectUUID})
+		Where(squirrel.Eq{"project_id": projectUUID}).
+		OrderBy("updated_at DESC").
+		Limit(1)
 
 	row := r.qb.QueryRow(query)
 
@@ -114,6 +116,7 @@ func (r *publishTargetRepository) GetBySubdomain(ctx context.Context, subdomain 
 func (r *publishTargetRepository) Update(ctx context.Context, target *domain.PublishTarget) error {
 	query := r.qb.Update("publish_targets").
 		Set("status", target.Status).
+		Set("subdomain", target.Subdomain).
 		Set("last_published_at", target.LastPublishedAt).
 		Set("updated_at", target.UpdatedAt).
 		Where(squirrel.Eq{"id": target.ID})

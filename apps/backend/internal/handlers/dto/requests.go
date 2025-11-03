@@ -32,6 +32,10 @@ type GenerateRequest struct {
 	PaymentURL string `json:"payment_url"`
 }
 
+type ChatMessageRequest struct {
+	Content string `json:"content" binding:"required"`
+}
+
 // Analytics requests
 type TrackEventRequest struct {
 	EventType string `json:"event_type" binding:"required"`

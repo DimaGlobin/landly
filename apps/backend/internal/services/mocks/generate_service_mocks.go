@@ -83,6 +83,28 @@ func (m *GenerationSessionRepositoryMock) Delete(ctx context.Context, id string)
 	return args.Error(0)
 }
 
+type GenerationMessageRepositoryMock struct {
+	mock.Mock
+}
+
+func (m *GenerationMessageRepositoryMock) Create(ctx context.Context, message *domain.GenerationMessage) error {
+	args := m.Called(ctx, message)
+	return args.Error(0)
+}
+
+func (m *GenerationMessageRepositoryMock) ListBySession(ctx context.Context, sessionID string) ([]*domain.GenerationMessage, error) {
+	args := m.Called(ctx, sessionID)
+	if messages, ok := args.Get(0).([]*domain.GenerationMessage); ok {
+		return messages, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *GenerationMessageRepositoryMock) DeleteBySession(ctx context.Context, sessionID string) error {
+	args := m.Called(ctx, sessionID)
+	return args.Error(0)
+}
+
 type IntegrationRepositoryMock struct {
 	mock.Mock
 }
@@ -134,4 +156,3 @@ func (m *AIClientMock) GenerateLandingSchema(ctx context.Context, prompt, paymen
 	args := m.Called(ctx, prompt, paymentURL)
 	return args.String(0), args.Error(1)
 }
-
