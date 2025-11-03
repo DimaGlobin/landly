@@ -192,6 +192,19 @@ func createTestSchema(db *sql.DB) error {
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
+	CREATE TABLE IF NOT EXISTS generation_messages (
+		id UUID PRIMARY KEY,
+		session_id UUID NOT NULL REFERENCES generation_sessions(id) ON DELETE CASCADE,
+		role VARCHAR(20) NOT NULL,
+		content TEXT NOT NULL,
+		metadata TEXT,
+		tokens_used INTEGER NOT NULL DEFAULT 0,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_generation_messages_session_created_at
+		ON generation_messages(session_id, created_at);
+
 	CREATE TABLE IF NOT EXISTS integrations (
 		id UUID PRIMARY KEY,
 		project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -232,6 +245,7 @@ func cleanupTestDB(t *testing.T, db *sql.DB) {
 	t.Helper()
 
 	tables := []string{
+		"generation_messages",
 		"analytics_events",
 		"publish_targets",
 		"integrations",

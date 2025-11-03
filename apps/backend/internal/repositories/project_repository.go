@@ -76,7 +76,7 @@ func (r *projectRepository) GetByUserID(ctx context.Context, userID string) ([]*
 	query := r.qb.Select("id", "user_id", "name", "niche", "schema_json", "status", "created_at", "updated_at").
 		From("projects").
 		Where(squirrel.Eq{"user_id": userUUID}).
-		OrderBy("created_at DESC")
+		OrderBy("updated_at DESC")
 
 	rows, err := r.qb.Query(query)
 	if err != nil {
@@ -99,6 +99,9 @@ func (r *projectRepository) GetByUserID(ctx context.Context, userID string) ([]*
 
 // Update обновляет проект
 func (r *projectRepository) Update(ctx context.Context, project *domain.Project) error {
+	now := time.Now()
+	project.UpdatedAt = now
+
 	query := r.qb.Update("projects").
 		Set("name", project.Name).
 		Set("niche", project.Niche).

@@ -153,6 +153,14 @@ func TestStaticRenderer_RenderBlock_Pricing(t *testing.T) {
 
 	props := map[string]interface{}{
 		"title": "Our Pricing",
+		"plans": []interface{}{
+			map[string]interface{}{
+				"name":     "Basic",
+				"price":    "49",
+				"currency": "₽",
+				"features": []interface{}{"Feature One", "Feature Two"},
+			},
+		},
 	}
 
 	schema := map[string]interface{}{
@@ -163,8 +171,10 @@ func TestStaticRenderer_RenderBlock_Pricing(t *testing.T) {
 
 	html := renderer.renderBlock("pricing", props, schema)
 	assert.Contains(t, html, "Our Pricing")
+	assert.Contains(t, html, "Basic")
+	assert.Contains(t, html, "Feature One")
+	assert.Contains(t, html, "landing-button landing-button--secondary")
 	assert.Contains(t, html, "https://payment.example.com")
-	assert.Contains(t, html, "pay-button")
 }
 
 func TestStaticRenderer_RenderBlock_CTA(t *testing.T) {
@@ -228,7 +238,7 @@ func TestStaticRenderer_RenderBlock_Unknown(t *testing.T) {
 	renderer := NewStaticRenderer("/tmp")
 
 	html := renderer.renderBlock("unknown", map[string]interface{}{}, nil)
-	assert.Contains(t, html, "Block type: unknown")
+	assert.Contains(t, html, "Блок unknown пока не поддерживается")
 }
 
 func TestGetStringProp(t *testing.T) {
@@ -257,6 +267,6 @@ func TestStaticRenderer_GenerateHTML_WithBlocks(t *testing.T) {
 	html := renderer.generateHTML("Test Title", blocks, nil)
 	assert.Contains(t, html, "<!DOCTYPE html>")
 	assert.Contains(t, html, "<title>Test Title</title>")
-	assert.Contains(t, html, "block-hero")
+	assert.Contains(t, html, "landing-section--hero")
 	assert.Contains(t, html, "Test")
 }

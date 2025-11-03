@@ -21,8 +21,10 @@ type UserRepository interface {
 
 // AuthService сервис для аутентификации
 type AuthService struct {
-	userRepo  UserRepository
-	jwtSecret string
+	userRepo   UserRepository
+	jwtSecret  string
+	accessTTL  time.Duration
+	refreshTTL time.Duration
 }
 
 // AuthTokens токены аутентификации
@@ -33,10 +35,19 @@ type AuthTokens struct {
 }
 
 // NewAuthService создаёт новый auth service
-func NewAuthService(userRepo UserRepository, jwtSecret string) *AuthService {
+func NewAuthService(userRepo UserRepository, jwtSecret string, accessTTL, refreshTTL time.Duration) *AuthService {
+	if accessTTL <= 0 {
+		accessTTL = 15 * time.Minute
+	}
+	if refreshTTL <= 0 {
+		refreshTTL = 7 * 24 * time.Hour
+	}
+
 	return &AuthService{
-		userRepo:  userRepo,
-		jwtSecret: jwtSecret,
+		userRepo:   userRepo,
+		jwtSecret:  jwtSecret,
+		accessTTL:  accessTTL,
+		refreshTTL: refreshTTL,
 	}
 }
 
@@ -215,8 +226,8 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 // generateTokens генерирует access и refresh токены
 func (s *AuthService) generateTokens(userID uuid.UUID) (*AuthTokens, error) {
 	now := time.Now()
-	accessExp := now.Add(24 * time.Hour)      // 24 часа
-	refreshExp := now.Add(7 * 24 * time.Hour) // 7 дней
+	accessExp := now.Add(s.accessTTL)
+	refreshExp := now.Add(s.refreshTTL)
 
 	// Access token
 	accessClaims := jwt.MapClaims{

@@ -56,7 +56,7 @@ func (h *ProjectHandler) getPublishInfo(ctx context.Context, projectID uuid.UUID
 		return nil
 	}
 
-	publicURL := fmt.Sprintf("%s/%s", h.publicBaseURL(), target.Subdomain)
+	publicURL := fmt.Sprintf("%s/sites/%s", h.publicBaseURL(), target.Subdomain)
 
 	return &dto.ProjectPublishInfo{
 		Status:          target.Status,

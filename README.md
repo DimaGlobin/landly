@@ -12,7 +12,7 @@ git clone https://github.com/DimaGlobin/landly.git
 cd landly
 
 # Запустить все сервисы одной командой
-make dev
+make run
 ```
 
 Всё! Приложение запустится автоматически. Подождите ~30-60 секунд пока соберутся образы и применятся миграции.
@@ -112,6 +112,7 @@ OpenAPI: [docs/openapi.yaml](docs/openapi.yaml)
 ## Makefile команды
 
 ```bash
+make run              # Запустить тесты и приложение в docker
 make dev              # Запустить все сервисы
 make down             # Остановить сервисы
 make logs             # Показать логи

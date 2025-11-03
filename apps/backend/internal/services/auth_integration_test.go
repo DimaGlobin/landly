@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ import (
 func TestAuthService_Integration_SignUpSignInFlow(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	userRepo := repositories.NewUserRepository(qb)
-	authService := NewAuthService(userRepo, "test-secret-key-integration")
+	authService := NewAuthService(userRepo, "test-secret-key-integration", 15*time.Minute, 7*24*time.Hour)
 
 	ctx := context.Background()
 	email := "integration-test@example.com"
@@ -52,7 +53,7 @@ func TestAuthService_Integration_SignUpSignInFlow(t *testing.T) {
 func TestAuthService_Integration_DuplicateEmail(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	userRepo := repositories.NewUserRepository(qb)
-	authService := NewAuthService(userRepo, "test-secret-key-integration")
+	authService := NewAuthService(userRepo, "test-secret-key-integration", 15*time.Minute, 7*24*time.Hour)
 
 	ctx := context.Background()
 	email := "duplicate@example.com"
@@ -74,7 +75,7 @@ func TestAuthService_Integration_DuplicateEmail(t *testing.T) {
 func TestAuthService_Integration_InvalidCredentials(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	userRepo := repositories.NewUserRepository(qb)
-	authService := NewAuthService(userRepo, "test-secret-key-integration")
+	authService := NewAuthService(userRepo, "test-secret-key-integration", 15*time.Minute, 7*24*time.Hour)
 
 	ctx := context.Background()
 	email := "password-test@example.com"
@@ -97,7 +98,7 @@ func TestAuthService_Integration_InvalidCredentials(t *testing.T) {
 func TestAuthService_Integration_InvalidToken(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	userRepo := repositories.NewUserRepository(qb)
-	authService := NewAuthService(userRepo, "test-secret-key-integration")
+	authService := NewAuthService(userRepo, "test-secret-key-integration", 15*time.Minute, 7*24*time.Hour)
 
 	// Test with invalid token
 	_, err := authService.ValidateToken(context.Background(), "invalid.token.string")
@@ -111,7 +112,7 @@ func TestAuthService_Integration_InvalidToken(t *testing.T) {
 func TestAuthService_Integration_RefreshToken(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	userRepo := repositories.NewUserRepository(qb)
-	authService := NewAuthService(userRepo, "test-secret-key-integration")
+	authService := NewAuthService(userRepo, "test-secret-key-integration", 15*time.Minute, 7*24*time.Hour)
 
 	ctx := context.Background()
 	email := "refresh-test@example.com"

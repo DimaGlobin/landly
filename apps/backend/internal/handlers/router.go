@@ -16,6 +16,9 @@ type Router struct {
 	simpleGenerateHandler *SimpleGenerateHandler
 	analyticsHandler      *AnalyticsHandler
 	jwtSecret             string
+	allowedOrigins        []string
+	allowedMethods        []string
+	allowedHeaders        []string
 	logger                *zap.Logger
 }
 
@@ -26,6 +29,9 @@ func NewRouter(
 	simpleGenerateHandler *SimpleGenerateHandler,
 	analyticsHandler *AnalyticsHandler,
 	jwtSecret string,
+	allowedOrigins []string,
+	allowedMethods []string,
+	allowedHeaders []string,
 	logger *zap.Logger,
 ) *Router {
 	return &Router{
@@ -36,13 +42,16 @@ func NewRouter(
 		simpleGenerateHandler: simpleGenerateHandler,
 		analyticsHandler:      analyticsHandler,
 		jwtSecret:             jwtSecret,
+		allowedOrigins:        allowedOrigins,
+		allowedMethods:        allowedMethods,
+		allowedHeaders:        allowedHeaders,
 		logger:                logger,
 	}
 }
 
 func (r *Router) Setup() *gin.Engine {
 	// Middleware
-	r.engine.Use(CORSMiddleware())
+	r.engine.Use(CORSMiddleware(r.allowedOrigins, r.allowedMethods, r.allowedHeaders))
 	r.engine.Use(logger.TraceMiddleware())
 	r.engine.Use(logger.LoggingMiddleware())
 	r.engine.Use(RequestIDMiddleware())
@@ -52,6 +61,11 @@ func (r *Router) Setup() *gin.Engine {
 	r.engine.GET("/health", r.healthCheck)
 	r.engine.GET("/healthz", r.healthCheck)
 	r.engine.GET("/readyz", r.readinessCheck)
+
+	// Published static sites (public)
+	r.engine.GET("/sites/:slug", r.generateHandler.ServePublished)
+	r.engine.GET("/sites/:slug/*path", r.generateHandler.ServePublished)
+	r.engine.GET("/:slug", r.generateHandler.ServePublishedLegacy)
 
 	// API v1
 	v1 := r.engine.Group("/v1")
@@ -77,6 +91,8 @@ func (r *Router) Setup() *gin.Engine {
 			projects.POST("/:id/generate", r.generateHandler.Generate)
 			projects.POST("/:id/generate-simple", r.simpleGenerateHandler.GenerateSimple)
 			projects.GET("/:id/preview", r.generateHandler.GetPreview)
+			projects.GET("/:id/chat", r.generateHandler.GetChat)
+			projects.POST("/:id/chat", r.generateHandler.SendChat)
 			projects.POST("/:id/publish", r.generateHandler.Publish)
 			projects.DELETE("/:id/publish", r.generateHandler.Unpublish)
 		}

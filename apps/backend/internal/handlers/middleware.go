@@ -104,20 +104,44 @@ func LoggerMiddleware(logger *zap.Logger) gin.HandlerFunc {
 }
 
 // CORSMiddleware настраивает CORS
-func CORSMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+func CORSMiddleware(allowedOrigins, allowedMethods, allowedHeaders []string) gin.HandlerFunc {
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		originSet[o] = struct{}{}
+	}
 
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
+	methodsHeader := strings.Join(defaultIfEmpty(allowedMethods, []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}), ", ")
+	headersHeader := strings.Join(defaultIfEmpty(allowedHeaders, []string{"Authorization", "Content-Type"}), ", ")
+
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+		if origin != "" {
+			if _, ok := originSet[origin]; ok {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+		} else if len(allowedOrigins) > 0 {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigins[0])
+		}
+
+		c.Writer.Header().Set("Vary", "Origin")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", headersHeader)
+		c.Writer.Header().Set("Access-Control-Allow-Methods", methodsHeader)
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 
 		c.Next()
 	}
+}
+
+func defaultIfEmpty(values, fallback []string) []string {
+	if len(values) == 0 {
+		return fallback
+	}
+	return values
 }
 
 // RequestIDMiddleware добавляет request ID для трейсинга

@@ -56,6 +56,30 @@ type GenerationSessionResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type ChatSessionResponse struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	Status      string     `json:"status"`
+	SchemaJSON  string     `json:"schema_json"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type ChatMessageResponse struct {
+	ID         uuid.UUID `json:"id"`
+	Role       string    `json:"role"`
+	Content    string    `json:"content"`
+	Metadata   string    `json:"metadata,omitempty"`
+	TokensUsed int       `json:"tokens_used"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type ChatHistoryResponse struct {
+	Session  ChatSessionResponse   `json:"session"`
+	Messages []ChatMessageResponse `json:"messages"`
+}
+
 type PreviewResponse struct {
 	Schema map[string]interface{} `json:"schema"`
 }

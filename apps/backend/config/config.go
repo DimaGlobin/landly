@@ -238,6 +238,19 @@ func validateConfig(cfg *Config) error {
 	if cfg.Auth.JWT.Secret == "" {
 		return fmt.Errorf("auth.jwt.secret is required")
 	}
+	if len(cfg.Auth.JWT.Secret) < 32 {
+		return fmt.Errorf("auth.jwt.secret must be at least 32 characters")
+	}
+	if strings.EqualFold(cfg.App.Env, "production") && strings.Contains(cfg.Auth.JWT.Secret, "dev-secret") {
+		return fmt.Errorf("auth.jwt.secret must be overridden for production")
+	}
+
+	if cfg.Auth.JWT.AccessTokenTTL <= 0 {
+		cfg.Auth.JWT.AccessTokenTTL = 15 * time.Minute
+	}
+	if cfg.Auth.JWT.RefreshTokenTTL <= 0 {
+		cfg.Auth.JWT.RefreshTokenTTL = 7 * 24 * time.Hour
+	}
 
 	if cfg.Database.Postgres.Host == "" {
 		return fmt.Errorf("database.postgres.host is required")

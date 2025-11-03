@@ -48,6 +48,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	integrationRepo := repositories.NewIntegrationRepository(qb)
 	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
+	messageRepo := repositories.NewGenerationMessageRepository(qb)
 
 	// S3 клиент
 	s3Client, err := s3.NewClient(s3.Config{
@@ -74,9 +75,9 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	renderer := render.NewStaticRenderer(cfg.Render.TmpDir)
 
 	// Services
-	authService := services.NewAuthService(userRepo, cfg.Auth.JWT.Secret)
+	authService := services.NewAuthService(userRepo, cfg.Auth.JWT.Secret, cfg.Auth.JWT.AccessTokenTTL, cfg.Auth.JWT.RefreshTokenTTL)
 	projectService := services.NewProjectService(projectRepo)
-	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, aiClient)
+	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
 	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
 	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, aiClient)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
@@ -96,6 +97,9 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 		simpleGenerateHandler,
 		analyticsHandler,
 		cfg.Auth.JWT.Secret,
+		cfg.Server.CORS.AllowedOrigins,
+		cfg.Server.CORS.AllowedMethods,
+		cfg.Server.CORS.AllowedHeaders,
 		logger,
 	)
 

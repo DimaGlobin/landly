@@ -1,4 +1,4 @@
-.PHONY: help dev down migrate migrate-down migration seed test test-backend test-frontend build clean
+.PHONY: help dev run down migrate migrate-down migration seed test test-backend test-frontend build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -13,6 +13,17 @@ dev: ## Start all services in development mode
 	@echo "  - Redis: localhost:6379"
 	@echo "--- Tailing backend logs (press Ctrl+C to stop) ---"
 	docker-compose -f deploy/docker/docker-compose.yml logs -f backend
+
+run: ## Run tests in container, then start development services
+	COMPOSE_PROFILES=test docker-compose -f deploy/docker/docker-compose.yml run --rm --no-deps --entrypoint "" backend-builder sh -c "go test ./..."
+	COMPOSE_PROFILES=test docker-compose -f deploy/docker/docker-compose.yml run --rm --no-deps frontend-tester
+	docker-compose -f deploy/docker/docker-compose.yml up --build -d
+	@echo "Services started:"
+	@echo "  - Frontend: http://localhost:3000"
+	@echo "  - Backend API: http://localhost:8080"
+	@echo "  - MinIO Console: http://localhost:9001"
+	@echo "  - PostgreSQL: localhost:5432"
+	@echo "  - Redis: localhost:6379"
 
 down: ## Stop all services
 	docker-compose -f deploy/docker/docker-compose.yml down
