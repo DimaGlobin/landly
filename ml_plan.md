@@ -210,3 +210,4 @@ Docs
 ## Прогресс
 - P0a (конфигурация/доки): обновлены `config.yml`, `config.example.yml`, README и `config.Config` (новые поля, таймаут, response_format, OpenRouter-заготовка). Ожидает интеграцию клиента.
 - P0b (AI client): добавлен `ai.NewProviderClient` с поддержкой OpenAI/OpenRouter совместимого Chat Completions (HTTP клиент, ретраи, базовый промпт). Backend (`cmd/api`, `internal/server`) теперь инициализируют реальный клиент. Тесты `cd apps/backend && go test ./...` проходят.
+- P0c (валидация схемы): добавлен `docs/page_schema.json` + embedded версия, пакет `internal/validation/pageschema` с JSON Schema проверкой и автофиксом (CTA ссылки, минимум features, нормализация путей/лимитов), интеграция в `GenerateService`, чат и `SimpleGenerateService`. Тесты обновлены и проходят (`cd apps/backend && go test ./...`).

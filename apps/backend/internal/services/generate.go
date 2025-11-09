@@ -199,6 +199,17 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 		zap.Int("schema_length", len(schemaJSON)),
 	)
 
+	normalizedSchema, autoFixes, err := sanitizeSchema(schemaJSON)
+	if err != nil {
+		log.Error("schema validation failed", zap.Error(err))
+		session.Status = domain.GenerationStatusFailed
+		return nil, domain.ErrInternal.WithMessage("generated schema is invalid")
+	}
+	if len(autoFixes) > 0 {
+		log.Info("schema normalized", zap.Strings("auto_fixes", autoFixes))
+	}
+	schemaJSON = normalizedSchema
+
 	// Сохраняем схему в проект
 	log.Info("saving schema to project")
 	if err := s.projectRepo.UpdateSchema(ctx, projectID.String(), schemaJSON); err != nil {
@@ -319,6 +330,16 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		_ = s.sessionRepo.Update(ctx, session)
 		return nil, nil, domain.ErrInternal.WithError(err)
 	}
+
+	normalizedSchema, autoFixes, err := sanitizeSchema(schemaJSON)
+	if err != nil {
+		log.Error("chat schema validation failed", zap.Error(err))
+		return nil, nil, domain.ErrInternal.WithMessage("generated schema is invalid")
+	}
+	if len(autoFixes) > 0 {
+		log.Info("schema normalized", zap.Strings("auto_fixes", autoFixes))
+	}
+	schemaJSON = normalizedSchema
 
 	if err := s.projectRepo.UpdateSchema(ctx, project.ID.String(), schemaJSON); err != nil {
 		log.Error("failed to persist generated schema", zap.Error(err))

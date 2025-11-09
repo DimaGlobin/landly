@@ -13,6 +13,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/minio/minio-go/v7 v7.0.66
 	github.com/redis/go-redis/v9 v9.16.0
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.0
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.26.0

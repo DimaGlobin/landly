@@ -70,6 +70,16 @@ func (s *SimpleGenerateService) GenerateSimple(ctx context.Context, userID, proj
 		zap.Int("schema_length", len(schemaJSON)),
 	)
 
+	normalizedSchema, autoFixes, err := sanitizeSchema(schemaJSON)
+	if err != nil {
+		log.Error("schema validation failed", zap.Error(err))
+		return nil, fmt.Errorf("ошибка валидации схемы: %w", err)
+	}
+	if len(autoFixes) > 0 {
+		log.Info("schema normalized", zap.Strings("auto_fixes", autoFixes))
+	}
+	schemaJSON = normalizedSchema
+
 	// Парсим JSON схему
 	var schema map[string]interface{}
 	if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {

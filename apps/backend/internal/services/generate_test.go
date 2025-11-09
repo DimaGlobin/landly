@@ -27,16 +27,19 @@ func TestGenerateService_GenerateLanding_Success(t *testing.T) {
 	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, aiClient)
 
 	project := &domain.Project{ID: projectID, UserID: userID}
-	projectRepo.On("GetByID", ctx, projectID.String()).Return(project, nil).Once()
+	projectRepo.On("GetByID", ctx, projectID.String()).Return(project, nil).Twice()
 	sessionRepo.On("Create", ctx, mock.MatchedBy(func(session *domain.GenerationSession) bool {
 		require.Equal(t, projectID, session.ProjectID)
 		require.Equal(t, "Prompt", session.Prompt)
 		return true
 	})).Return(nil).Once()
-	generatedSchema := `{"pages":[{"path":"/","title":"Home","blocks":[]}]} `
+	generatedSchema := `{"pages":[{"path":"/","title":"Home","blocks":[{"type":"hero","props":{"headline":"Test","subheadline":"Demo","ctaText":"Buy","ctaUrl":"https://pay"}}]}]}`
 	aiClient.On("GenerateLandingSchema", ctx, "Prompt", "https://pay").Return(generatedSchema, nil).Once()
-	projectRepo.On("UpdateSchema", ctx, projectID.String(), generatedSchema).Return(nil).Once()
-	projectRepo.On("GetByID", ctx, projectID.String()).Return(&domain.Project{ID: projectID, UserID: userID, SchemaJSON: generatedSchema}, nil).Once()
+	var savedSchema string
+	projectRepo.On("UpdateSchema", ctx, projectID.String(), mock.AnythingOfType("string")).Return(nil).Run(func(args mock.Arguments) {
+		savedSchema = args.String(2)
+		project.SchemaJSON = savedSchema
+	}).Once()
 	sessionRepo.On("Update", mock.Anything, mock.MatchedBy(func(session *domain.GenerationSession) bool {
 		return session.Status == domain.GenerationStatusCompleted
 	})).Return(nil)
@@ -44,7 +47,8 @@ func TestGenerateService_GenerateLanding_Success(t *testing.T) {
 	updated, err := svc.GenerateLanding(ctx, userID, projectID, "Prompt", "https://pay")
 	require.NoError(t, err)
 	require.NotNil(t, updated)
-	assert.Equal(t, generatedSchema, updated.SchemaJSON)
+	assert.Equal(t, savedSchema, updated.SchemaJSON)
+	assert.NotEmpty(t, updated.SchemaJSON)
 
 	projectRepo.AssertExpectations(t)
 	sessionRepo.AssertExpectations(t)
@@ -69,6 +73,35 @@ func TestGenerateService_GenerateLanding_AIError(t *testing.T) {
 		return session.ProjectID == projectID
 	})).Return(nil)
 	aiClient.On("GenerateLandingSchema", ctx, "Prompt", "https://pay").Return("", errors.New("ai down"))
+	sessionRepo.On("Update", mock.Anything, mock.MatchedBy(func(session *domain.GenerationSession) bool {
+		return session.Status == domain.GenerationStatusFailed
+	})).Return(nil)
+
+	updated, err := svc.GenerateLanding(ctx, userID, projectID, "Prompt", "https://pay")
+	assert.Nil(t, updated)
+	assert.Error(t, err)
+
+	projectRepo.AssertExpectations(t)
+	sessionRepo.AssertExpectations(t)
+	aiClient.AssertExpectations(t)
+}
+
+func TestGenerateService_GenerateLanding_InvalidSchema(t *testing.T) {
+	ctx := context.Background()
+	projectID := uuid.New()
+	userID := uuid.New()
+
+	projectRepo := new(mocks.ProjectRepositoryMock)
+	sessionRepo := new(mocks.GenerationSessionRepositoryMock)
+	messageRepo := new(mocks.GenerationMessageRepositoryMock)
+	aiClient := new(mocks.AIClientMock)
+
+	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, aiClient)
+
+	project := &domain.Project{ID: projectID, UserID: userID}
+	projectRepo.On("GetByID", ctx, projectID.String()).Return(project, nil).Once()
+	sessionRepo.On("Create", ctx, mock.Anything).Return(nil).Once()
+	aiClient.On("GenerateLandingSchema", ctx, "Prompt", "https://pay").Return(`{"foo":"bar"}`, nil).Once()
 	sessionRepo.On("Update", mock.Anything, mock.MatchedBy(func(session *domain.GenerationSession) bool {
 		return session.Status == domain.GenerationStatusFailed
 	})).Return(nil)

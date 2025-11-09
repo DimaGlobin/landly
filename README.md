@@ -129,6 +129,7 @@ npm run test:e2e
 
 Документация: [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md)  
 OpenAPI: [docs/openapi.yaml](docs/openapi.yaml)
+Схема JSON-лендинга, которую генерирует AI: [docs/page_schema.json](docs/page_schema.json)
 
 Основные endpoints:
 
