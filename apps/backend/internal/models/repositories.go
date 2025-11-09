@@ -87,3 +87,21 @@ type AnalyticsRepository interface {
 	GetStats(ctx context.Context, projectID uuid.UUID) (*AnalyticsStats, error)
 	GetEvents(ctx context.Context, projectID uuid.UUID, limit, offset int) ([]*AnalyticsEvent, error)
 }
+
+// BrandProfileRepository интерфейс репозитория брендовых настроек
+type BrandProfileRepository interface {
+	Upsert(ctx context.Context, profile *BrandProfile) (*BrandProfile, error)
+	GetByProjectID(ctx context.Context, projectID string) (*BrandProfile, error)
+}
+
+// ProductProfileRepository интерфейс репозитория продуктовых данных
+type ProductProfileRepository interface {
+	Upsert(ctx context.Context, profile *ProductProfile) (*ProductProfile, error)
+	GetByProjectID(ctx context.Context, projectID string) (*ProductProfile, error)
+}
+
+// ContentSnippetRepository интерфейс для текстовых сниппетов
+type ContentSnippetRepository interface {
+	Create(ctx context.Context, snippet *ContentSnippet) (*ContentSnippet, error)
+	ListByProject(ctx context.Context, projectID string) ([]*ContentSnippet, error)
+}

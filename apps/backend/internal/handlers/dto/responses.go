@@ -27,14 +27,15 @@ type AuthResponse struct {
 
 // Project responses
 type ProjectResponse struct {
-	ID        uuid.UUID           `json:"id"`
-	UserID    uuid.UUID           `json:"user_id"`
-	Name      string              `json:"name"`
-	Niche     string              `json:"niche"`
-	Status    string              `json:"status"`
-	CreatedAt time.Time           `json:"created_at"`
-	UpdatedAt time.Time           `json:"updated_at"`
-	Publish   *ProjectPublishInfo `json:"publish,omitempty"`
+	ID            uuid.UUID           `json:"id"`
+	UserID        uuid.UUID           `json:"user_id"`
+	Name          string              `json:"name"`
+	Niche         string              `json:"niche"`
+	SchemaVersion int                 `json:"schema_version"`
+	Status        string              `json:"status"`
+	CreatedAt     time.Time           `json:"created_at"`
+	UpdatedAt     time.Time           `json:"updated_at"`
+	Publish       *ProjectPublishInfo `json:"publish,omitempty"`
 }
 
 type ProjectPublishInfo struct {

@@ -50,3 +50,34 @@ type TrackEventRequest struct {
 	Path      string `json:"path" binding:"required"`
 	Referrer  string `json:"referrer"`
 }
+
+// CCE requests
+type UpdateBrandProfileRequest struct {
+	Name           string            `json:"name" binding:"required"`
+	Tone           string            `json:"tone"`
+	Font           string            `json:"font"`
+	StylePreset    string            `json:"style_preset"`
+	Colors         []string          `json:"colors"`
+	PreferredWords []string          `json:"preferred_words"`
+	ForbiddenWords []string          `json:"forbidden_words"`
+	Guidelines     map[string]string `json:"guidelines"`
+}
+
+type UpdateProductProfileRequest struct {
+	Name            string           `json:"name" binding:"required"`
+	TargetAudience  string           `json:"target_audience"`
+	Goal            string           `json:"goal"`
+	ValueProp       string           `json:"value_prop"`
+	Differentiators []string         `json:"differentiators"`
+	Features        []ProductFeature `json:"features"`
+	Pricing         []ProductPlan    `json:"pricing"`
+	PrimaryLink     string           `json:"primary_link"`
+	PaymentURL      string           `json:"payment_url"`
+}
+
+type CreateSnippetRequest struct {
+	Label   string   `json:"label" binding:"required"`
+	Content string   `json:"content" binding:"required"`
+	Locale  string   `json:"locale"`
+	Tags    []string `json:"tags"`
+}

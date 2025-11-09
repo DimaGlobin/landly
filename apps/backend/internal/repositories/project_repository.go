@@ -34,8 +34,8 @@ func NewProjectRepository(qb *query.Builder) ProjectRepository {
 // Create создает проект
 func (r *projectRepository) Create(ctx context.Context, project *domain.Project) error {
 	query := r.qb.Insert("projects").
-		Columns("id", "user_id", "name", "niche", "schema_json", "status", "created_at", "updated_at").
-		Values(project.ID, project.UserID, project.Name, project.Niche, project.SchemaJSON, project.Status, project.CreatedAt, project.UpdatedAt)
+		Columns("id", "user_id", "name", "niche", "schema_json", "schema_version", "status", "created_at", "updated_at").
+		Values(project.ID, project.UserID, project.Name, project.Niche, project.SchemaJSON, project.SchemaVersion, project.Status, project.CreatedAt, project.UpdatedAt)
 
 	_, err := r.qb.Execute(query)
 	return err
@@ -48,14 +48,14 @@ func (r *projectRepository) GetByID(ctx context.Context, id string) (*domain.Pro
 		return nil, domain.ErrBadRequest.WithMessage("invalid project ID format")
 	}
 
-	query := r.qb.Select("id", "user_id", "name", "niche", "schema_json", "status", "created_at", "updated_at").
+	query := r.qb.Select("id", "user_id", "name", "niche", "schema_json", "schema_version", "status", "created_at", "updated_at").
 		From("projects").
 		Where(squirrel.Eq{"id": projectID})
 
 	row := r.qb.QueryRow(query)
 
 	var project domain.Project
-	err = row.Scan(&project.ID, &project.UserID, &project.Name, &project.Niche, &project.SchemaJSON, &project.Status, &project.CreatedAt, &project.UpdatedAt)
+	err = row.Scan(&project.ID, &project.UserID, &project.Name, &project.Niche, &project.SchemaJSON, &project.SchemaVersion, &project.Status, &project.CreatedAt, &project.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrNotFound.WithMessage("project not found")
@@ -73,7 +73,7 @@ func (r *projectRepository) GetByUserID(ctx context.Context, userID string) ([]*
 		return nil, domain.ErrBadRequest.WithMessage("invalid user ID format")
 	}
 
-	query := r.qb.Select("id", "user_id", "name", "niche", "schema_json", "status", "created_at", "updated_at").
+	query := r.qb.Select("id", "user_id", "name", "niche", "schema_json", "schema_version", "status", "created_at", "updated_at").
 		From("projects").
 		Where(squirrel.Eq{"user_id": userUUID}).
 		OrderBy("updated_at DESC")
@@ -87,7 +87,7 @@ func (r *projectRepository) GetByUserID(ctx context.Context, userID string) ([]*
 	var projects []*domain.Project
 	for rows.Next() {
 		var project domain.Project
-		err := rows.Scan(&project.ID, &project.UserID, &project.Name, &project.Niche, &project.SchemaJSON, &project.Status, &project.CreatedAt, &project.UpdatedAt)
+		err := rows.Scan(&project.ID, &project.UserID, &project.Name, &project.Niche, &project.SchemaJSON, &project.SchemaVersion, &project.Status, &project.CreatedAt, &project.UpdatedAt)
 		if err != nil {
 			return nil, domain.ErrInternal.WithError(err)
 		}
@@ -107,6 +107,7 @@ func (r *projectRepository) Update(ctx context.Context, project *domain.Project)
 		Set("niche", project.Niche).
 		Set("schema_json", project.SchemaJSON).
 		Set("status", project.Status).
+		Set("schema_version", project.SchemaVersion).
 		Set("updated_at", project.UpdatedAt).
 		Where(squirrel.Eq{"id": project.ID})
 
@@ -139,6 +140,7 @@ func (r *projectRepository) UpdateSchema(ctx context.Context, projectID string, 
 
 	query := r.qb.Update("projects").
 		Set("schema_json", schemaJSON).
+		Set("schema_version", squirrel.Expr("schema_version + 1")).
 		Set("status", domain.ProjectStatusGenerated).
 		Set("updated_at", now).
 		Where(squirrel.Eq{"id": projectUUID})

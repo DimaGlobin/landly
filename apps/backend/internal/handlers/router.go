@@ -15,6 +15,7 @@ type Router struct {
 	generateHandler       *GenerateHandler
 	simpleGenerateHandler *SimpleGenerateHandler
 	analyticsHandler      *AnalyticsHandler
+	cceHandler            *CCEHandler
 	jwtSecret             string
 	allowedOrigins        []string
 	allowedMethods        []string
@@ -28,6 +29,7 @@ func NewRouter(
 	generateHandler *GenerateHandler,
 	simpleGenerateHandler *SimpleGenerateHandler,
 	analyticsHandler *AnalyticsHandler,
+	cceHandler *CCEHandler,
 	jwtSecret string,
 	allowedOrigins []string,
 	allowedMethods []string,
@@ -41,6 +43,7 @@ func NewRouter(
 		generateHandler:       generateHandler,
 		simpleGenerateHandler: simpleGenerateHandler,
 		analyticsHandler:      analyticsHandler,
+		cceHandler:            cceHandler,
 		jwtSecret:             jwtSecret,
 		allowedOrigins:        allowedOrigins,
 		allowedMethods:        allowedMethods,
@@ -95,6 +98,11 @@ func (r *Router) Setup() *gin.Engine {
 			projects.POST("/:id/chat", r.generateHandler.SendChat)
 			projects.POST("/:id/publish", r.generateHandler.Publish)
 			projects.DELETE("/:id/publish", r.generateHandler.Unpublish)
+			projects.PUT("/:id/brand-profile", r.cceHandler.UpdateBrandProfile)
+			projects.PUT("/:id/product-profile", r.cceHandler.UpdateProductProfile)
+			projects.POST("/:id/snippets", r.cceHandler.CreateSnippet)
+			projects.GET("/:id/snippets", r.cceHandler.ListSnippets)
+			projects.GET("/:id/context", r.cceHandler.GetContext)
 		}
 
 		// Analytics

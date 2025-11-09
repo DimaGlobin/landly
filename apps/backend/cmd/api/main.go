@@ -69,6 +69,9 @@ func main() {
 	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	messageRepo := repositories.NewGenerationMessageRepository(qb)
+	brandRepo := repositories.NewBrandProfileRepository(qb)
+	productProfileRepo := repositories.NewProductProfileRepository(qb)
+	contentSnippetRepo := repositories.NewContentSnippetRepository(qb)
 
 	// S3 клиент
 	s3Client, err := s3.NewClient(s3.Config{
@@ -100,6 +103,7 @@ func main() {
 	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
 	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
+	cceService := services.NewCCEService(projectRepo, brandRepo, productProfileRepo, contentSnippetRepo)
 
 	// HTTP handlers
 	authHandler := handlers.NewAuthHandler(authService)
@@ -108,6 +112,7 @@ func main() {
 	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, aiClient)
 	simpleGenerateHandler := handlers.NewSimpleGenerateHandler(simpleGenerateService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
+	cceHandler := handlers.NewCCEHandler(cceService)
 
 	// Router
 	router := handlers.NewRouter(
@@ -116,6 +121,7 @@ func main() {
 		generateHandler,
 		simpleGenerateHandler,
 		analyticsHandler,
+		cceHandler,
 		cfg.Auth.JWT.Secret,
 		cfg.Server.CORS.AllowedOrigins,
 		cfg.Server.CORS.AllowedMethods,

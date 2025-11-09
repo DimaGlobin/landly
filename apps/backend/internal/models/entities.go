@@ -17,14 +17,15 @@ type User struct {
 
 // Project представляет проект пользователя
 type Project struct {
-	ID         uuid.UUID `db:"id" json:"id"`
-	UserID     uuid.UUID `db:"user_id" json:"user_id"`
-	Name       string    `db:"name" json:"name"`
-	Niche      string    `db:"niche" json:"niche"`
-	SchemaJSON string    `db:"schema_json" json:"schema_json"`
-	Status     string    `db:"status" json:"status"`
-	CreatedAt  time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt  time.Time `db:"updated_at" json:"updated_at"`
+	ID            uuid.UUID `db:"id" json:"id"`
+	UserID        uuid.UUID `db:"user_id" json:"user_id"`
+	Name          string    `db:"name" json:"name"`
+	Niche         string    `db:"niche" json:"niche"`
+	SchemaJSON    string    `db:"schema_json" json:"schema_json"`
+	SchemaVersion int       `db:"schema_version" json:"schema_version"`
+	Status        string    `db:"status" json:"status"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at" json:"updated_at"`
 }
 
 // GenerationSession представляет сессию генерации
@@ -82,6 +83,68 @@ type Integration struct {
 	Config    string    `db:"config" json:"config"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
+
+// BrandProfile описывает брендовые настройки проекта
+type BrandProfile struct {
+	ID             uuid.UUID         `db:"id" json:"id"`
+	ProjectID      uuid.UUID         `db:"project_id" json:"project_id"`
+	BrandName      string            `db:"brand_name" json:"brand_name"`
+	BrandTone      string            `db:"brand_tone" json:"brand_tone"`
+	Font           string            `db:"font" json:"font"`
+	StylePreset    string            `db:"style_preset" json:"style_preset"`
+	BrandColors    []string          `db:"brand_colors" json:"brand_colors"`
+	PreferredWords []string          `db:"preferred_words" json:"preferred_words"`
+	ForbiddenWords []string          `db:"forbidden_words" json:"forbidden_words"`
+	Guidelines     map[string]string `db:"guidelines" json:"guidelines"`
+	CreatedAt      time.Time         `db:"created_at" json:"created_at"`
+	UpdatedAt      time.Time         `db:"updated_at" json:"updated_at"`
+}
+
+// ProductFeature описывает фичу продукта для промпта
+type ProductFeature struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
+// ProductPlan описывает тариф
+type ProductPlan struct {
+	Name       string   `json:"name"`
+	Price      string   `json:"price"`
+	Currency   string   `json:"currency"`
+	Period     string   `json:"period"`
+	Features   []string `json:"features"`
+	ButtonText string   `json:"button_text"`
+	URL        string   `json:"url"`
+	Featured   bool     `json:"featured"`
+}
+
+// ProductProfile содержит продуктовый контент проекта
+type ProductProfile struct {
+	ID              uuid.UUID        `db:"id" json:"id"`
+	ProjectID       uuid.UUID        `db:"project_id" json:"project_id"`
+	ProductName     string           `db:"product_name" json:"product_name"`
+	TargetAudience  string           `db:"target_audience" json:"target_audience"`
+	Goal            string           `db:"goal" json:"goal"`
+	ValueProp       string           `db:"value_prop" json:"value_prop"`
+	Differentiators []string         `db:"differentiators" json:"differentiators"`
+	Features        []ProductFeature `db:"features" json:"features"`
+	Pricing         []ProductPlan    `db:"pricing" json:"pricing"`
+	PrimaryLink     string           `db:"primary_link" json:"primary_link"`
+	PaymentURL      string           `db:"payment_url" json:"payment_url"`
+	CreatedAt       time.Time        `db:"created_at" json:"created_at"`
+	UpdatedAt       time.Time        `db:"updated_at" json:"updated_at"`
+}
+
+// ContentSnippet представляет текстовый фрагмент, который нужно включить в промпт
+type ContentSnippet struct {
+	ID        uuid.UUID `db:"id" json:"id"`
+	ProjectID uuid.UUID `db:"project_id" json:"project_id"`
+	Label     string    `db:"label" json:"label"`
+	Content   string    `db:"content" json:"content"`
+	Locale    string    `db:"locale" json:"locale"`
+	Tags      []string  `db:"tags" json:"tags"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
 // Константы статусов
@@ -155,13 +218,14 @@ type GenerationResult struct {
 // NewProject создаёт новый проект
 func NewProject(userID uuid.UUID, name, niche string) *Project {
 	return &Project{
-		ID:        uuid.New(),
-		UserID:    userID,
-		Name:      name,
-		Niche:     niche,
-		Status:    ProjectStatusDraft,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:            uuid.New(),
+		UserID:        userID,
+		Name:          name,
+		Niche:         niche,
+		SchemaVersion: 1,
+		Status:        ProjectStatusDraft,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 }
 

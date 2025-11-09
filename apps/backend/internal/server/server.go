@@ -49,6 +49,9 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	messageRepo := repositories.NewGenerationMessageRepository(qb)
+	brandRepo := repositories.NewBrandProfileRepository(qb)
+	productProfileRepo := repositories.NewProductProfileRepository(qb)
+	contentSnippetRepo := repositories.NewContentSnippetRepository(qb)
 
 	// S3 клиент
 	s3Client, err := s3.NewClient(s3.Config{
@@ -79,6 +82,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
 	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, aiClient)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
+	cceService := services.NewCCEService(projectRepo, brandRepo, productProfileRepo, contentSnippetRepo)
 
 	// HTTP handlers
 	authHandler := handlers.NewAuthHandler(authService)
@@ -86,6 +90,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	generateHandler := handlers.NewGenerateHandler(generateService, publishService, cfg.App.BaseURL)
 	simpleGenerateHandler := handlers.NewSimpleGenerateHandler(simpleGenerateService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
+	cceHandler := handlers.NewCCEHandler(cceService)
 
 	// Router
 	router := handlers.NewRouter(
@@ -94,6 +99,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 		generateHandler,
 		simpleGenerateHandler,
 		analyticsHandler,
+		cceHandler,
 		cfg.Auth.JWT.Secret,
 		cfg.Server.CORS.AllowedOrigins,
 		cfg.Server.CORS.AllowedMethods,

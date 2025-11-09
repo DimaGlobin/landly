@@ -138,6 +138,10 @@ OpenAPI: [docs/openapi.yaml](docs/openapi.yaml)
 - `POST /api/projects/simple` - создать проект
 - `GET /api/projects/:id` - получить проект
 - `POST /api/projects/:id/publish` - опубликовать
+- `PUT /api/projects/:id/brand-profile` - сохранить брендовые настройки
+- `PUT /api/projects/:id/product-profile` - сохранить описание продукта
+- `POST /api/projects/:id/snippets` - добавить обязательный текстовый сниппет
+- `GET /api/projects/:id/context` - получить собранный Client Context Engine
 
 ## Makefile команды
 

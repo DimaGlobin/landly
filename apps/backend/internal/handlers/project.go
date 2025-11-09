@@ -98,13 +98,14 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, dto.ProjectResponse{
-		ID:        project.ID,
-		UserID:    project.UserID,
-		Name:      project.Name,
-		Niche:     project.Niche,
-		Status:    string(project.Status),
-		CreatedAt: project.CreatedAt,
-		UpdatedAt: project.UpdatedAt,
+		ID:            project.ID,
+		UserID:        project.UserID,
+		Name:          project.Name,
+		Niche:         project.Niche,
+		SchemaVersion: project.SchemaVersion,
+		Status:        string(project.Status),
+		CreatedAt:     project.CreatedAt,
+		UpdatedAt:     project.UpdatedAt,
 	})
 }
 
@@ -132,14 +133,15 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 	response := make([]dto.ProjectResponse, len(projects))
 	for i, p := range projects {
 		response[i] = dto.ProjectResponse{
-			ID:        p.ID,
-			UserID:    p.UserID,
-			Name:      p.Name,
-			Niche:     p.Niche,
-			Status:    string(p.Status),
-			CreatedAt: p.CreatedAt,
-			UpdatedAt: p.UpdatedAt,
-			Publish:   h.getPublishInfo(ctx, p.ID),
+			ID:            p.ID,
+			UserID:        p.UserID,
+			Name:          p.Name,
+			Niche:         p.Niche,
+			SchemaVersion: p.SchemaVersion,
+			Status:        string(p.Status),
+			CreatedAt:     p.CreatedAt,
+			UpdatedAt:     p.UpdatedAt,
+			Publish:       h.getPublishInfo(ctx, p.ID),
 		}
 	}
 
@@ -178,14 +180,15 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, dto.ProjectResponse{
-		ID:        project.ID,
-		UserID:    project.UserID,
-		Name:      project.Name,
-		Niche:     project.Niche,
-		Status:    string(project.Status),
-		CreatedAt: project.CreatedAt,
-		UpdatedAt: project.UpdatedAt,
-		Publish:   h.getPublishInfo(ctx, project.ID),
+		ID:            project.ID,
+		UserID:        project.UserID,
+		Name:          project.Name,
+		Niche:         project.Niche,
+		SchemaVersion: project.SchemaVersion,
+		Status:        string(project.Status),
+		CreatedAt:     project.CreatedAt,
+		UpdatedAt:     project.UpdatedAt,
+		Publish:       h.getPublishInfo(ctx, project.ID),
 	})
 }
 
