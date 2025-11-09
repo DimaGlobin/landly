@@ -12,6 +12,7 @@ import (
 	"github.com/landly/backend/internal/handlers/dto"
 	"github.com/landly/backend/internal/logger"
 	domain "github.com/landly/backend/internal/models"
+	"github.com/landly/backend/internal/services"
 	"go.uber.org/zap"
 )
 
@@ -22,7 +23,7 @@ type GenerateService interface {
 	GetGenerationResult(ctx context.Context, userID, sessionID string) (*domain.GenerationResult, error)
 	GetPreview(ctx context.Context, userID, projectID uuid.UUID) (map[string]interface{}, error)
 	GetChatHistory(ctx context.Context, userID, projectID string) (*domain.GenerationSession, []*domain.GenerationMessage, error)
-	SendChatMessage(ctx context.Context, userID, projectID, content string) (*domain.GenerationSession, []*domain.GenerationMessage, error)
+	SendChatMessage(ctx context.Context, userID, projectID, content string) (*domain.GenerationSession, []*domain.GenerationMessage, *services.ChatPatch, string, error)
 }
 
 // PublishService интерфейс для сервиса публикации
@@ -185,7 +186,7 @@ func (h *GenerateHandler) SendChat(c *gin.Context) {
 		return
 	}
 
-	session, messages, err := h.generateService.SendChatMessage(c.Request.Context(), userID.String(), projectID.String(), req.Content)
+	session, messages, patch, summary, err := h.generateService.SendChatMessage(c.Request.Context(), userID.String(), projectID.String(), req.Content)
 	if respondWithDomainError(c, err) {
 		return
 	}
@@ -193,6 +194,8 @@ func (h *GenerateHandler) SendChat(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.ChatHistoryResponse{
 		Session:  toChatSessionResponse(session),
 		Messages: toChatMessagesResponse(messages),
+		Patch:    toChatPatchResponse(patch),
+		Summary:  summary,
 	})
 }
 
@@ -399,4 +402,16 @@ func toChatMessagesResponse(messages []*domain.GenerationMessage) []dto.ChatMess
 	}
 
 	return result
+}
+
+func toChatPatchResponse(patch *services.ChatPatch) *dto.ChatPatch {
+	if patch == nil {
+		return nil
+	}
+
+	return &dto.ChatPatch{
+		Type:       patch.Type,
+		Operations: patch.Operations,
+		Document:   patch.Document,
+	}
 }

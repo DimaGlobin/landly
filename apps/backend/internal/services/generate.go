@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/google/uuid"
 	"github.com/landly/backend/internal/logger"
 	domain "github.com/landly/backend/internal/models"
@@ -25,6 +26,13 @@ type GenerateService struct {
 	sessionRepo     domain.GenerationSessionRepository
 	messageRepo     domain.GenerationMessageRepository
 	aiClient        AIClient
+}
+
+// ChatPatch описывает изменения схемы в формате Json Patch или merge patch.
+type ChatPatch struct {
+	Type       string
+	Operations []map[string]interface{}
+	Document   map[string]interface{}
 }
 
 // NewGenerateService создаёт новый generate service
@@ -276,20 +284,20 @@ func (s *GenerateService) GetChatHistory(ctx context.Context, userID, projectID 
 }
 
 // SendChatMessage обрабатывает новое сообщение пользователя и возвращает обновлённую историю
-func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID, content string) (*domain.GenerationSession, []*domain.GenerationMessage, error) {
+func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID, content string) (*domain.GenerationSession, []*domain.GenerationMessage, *ChatPatch, string, error) {
 	trimmed := strings.TrimSpace(content)
 	if trimmed == "" {
-		return nil, nil, domain.ErrBadRequest.WithMessage("message content is required")
+		return nil, nil, nil, "", domain.ErrBadRequest.WithMessage("message content is required")
 	}
 
 	project, err := s.ensureProjectOwnership(ctx, userID, projectID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 
 	session, err := s.ensureSessionForProject(ctx, project)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 
 	now := time.Now()
@@ -304,12 +312,12 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 	}
 
 	if err := s.messageRepo.Create(ctx, userMessage); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 
 	messages, err := s.messageRepo.ListBySession(ctx, session.ID.String())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 
 	prompt := s.buildChatPrompt(session, messages)
@@ -328,22 +336,27 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		session.UpdatedAt = now
 		session.CompletedAt = ptrTime(now)
 		_ = s.sessionRepo.Update(ctx, session)
-		return nil, nil, domain.ErrInternal.WithError(err)
+		return nil, nil, nil, "", domain.ErrInternal.WithError(err)
 	}
 
 	normalizedSchema, autoFixes, err := sanitizeSchema(schemaJSON)
 	if err != nil {
 		log.Error("chat schema validation failed", zap.Error(err))
-		return nil, nil, domain.ErrInternal.WithMessage("generated schema is invalid")
+		return nil, nil, nil, "", domain.ErrInternal.WithMessage("generated schema is invalid")
 	}
 	if len(autoFixes) > 0 {
 		log.Info("schema normalized", zap.Strings("auto_fixes", autoFixes))
 	}
 	schemaJSON = normalizedSchema
 
+	patch, patchErr := buildChatPatch(project.SchemaJSON, schemaJSON)
+	if patchErr != nil {
+		log.Warn("failed to build chat patch", zap.Error(patchErr))
+	}
+
 	if err := s.projectRepo.UpdateSchema(ctx, project.ID.String(), schemaJSON); err != nil {
 		log.Error("failed to persist generated schema", zap.Error(err))
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 
 	project.SchemaJSON = schemaJSON
@@ -357,23 +370,34 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 	session.UpdatedAt = now
 	if err := s.sessionRepo.Update(ctx, session); err != nil {
 		log.Error("failed to update generation session", zap.Error(err))
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 
 	assistantContent := fmt.Sprintf("Готово! Я обновил лендинг согласно запросу: \"%s\". Посмотри предпросмотр справа.", truncateUserContent(trimmed))
+	metaPayload := map[string]interface{}{
+		"schema_updated": true,
+		"schema_length":  len(schemaJSON),
+	}
+	if patch != nil {
+		metaPayload["patch_type"] = patch.Type
+		if len(patch.Operations) > 0 {
+			metaPayload["patch_operations"] = len(patch.Operations)
+		}
+	}
+	metaJSON, _ := json.Marshal(metaPayload)
 	assistantMessage := &domain.GenerationMessage{
 		ID:         uuid.New(),
 		SessionID:  session.ID,
 		Role:       domain.MessageRoleAssistant,
 		Content:    assistantContent,
-		Metadata:   fmt.Sprintf("{\"schema_updated\":true,\"schema_length\":%d}", len(schemaJSON)),
+		Metadata:   string(metaJSON),
 		TokensUsed: 0,
 		CreatedAt:  time.Now(),
 	}
 
 	if err := s.messageRepo.Create(ctx, assistantMessage); err != nil {
 		log.Error("failed to save assistant message", zap.Error(err))
-		return nil, nil, err
+		return nil, nil, nil, "", err
 	}
 
 	messages = append(messages, assistantMessage)
@@ -382,7 +406,7 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		zap.Int("messages_total", len(messages)),
 	)
 
-	return session, messages, nil
+	return session, messages, patch, assistantContent, nil
 }
 
 func (s *GenerateService) ensureProjectOwnership(ctx context.Context, userID, projectID string) (*domain.Project, error) {
@@ -422,6 +446,41 @@ func (s *GenerateService) ensureSessionForProject(ctx context.Context, project *
 	}
 
 	return session, nil
+}
+
+func buildChatPatch(oldSchema, newSchema string) (*ChatPatch, error) {
+	if strings.TrimSpace(newSchema) == "" {
+		return nil, nil
+	}
+
+	if strings.TrimSpace(oldSchema) == "" {
+		var document map[string]interface{}
+		if err := json.Unmarshal([]byte(newSchema), &document); err != nil {
+			return nil, err
+		}
+		return &ChatPatch{
+			Type:     "merge_patch",
+			Document: document,
+		}, nil
+	}
+
+	mergePatch, err := jsonpatch.CreateMergePatch([]byte(oldSchema), []byte(newSchema))
+	if err != nil {
+		return nil, err
+	}
+
+	var document map[string]interface{}
+	if err := json.Unmarshal(mergePatch, &document); err != nil {
+		return nil, err
+	}
+	if len(document) == 0 {
+		return nil, nil
+	}
+
+	return &ChatPatch{
+		Type:     "merge_patch",
+		Document: document,
+	}, nil
 }
 
 func (s *GenerateService) buildChatPrompt(session *domain.GenerationSession, messages []*domain.GenerationMessage) string {

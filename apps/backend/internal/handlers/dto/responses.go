@@ -79,6 +79,14 @@ type ChatMessageResponse struct {
 type ChatHistoryResponse struct {
 	Session  ChatSessionResponse   `json:"session"`
 	Messages []ChatMessageResponse `json:"messages"`
+	Patch    *ChatPatch            `json:"patch,omitempty"`
+	Summary  string                `json:"summary,omitempty"`
+}
+
+type ChatPatch struct {
+	Type       string                   `json:"type"`
+	Operations []map[string]interface{} `json:"operations,omitempty"`
+	Document   map[string]interface{}   `json:"document,omitempty"`
 }
 
 type PreviewResponse struct {
