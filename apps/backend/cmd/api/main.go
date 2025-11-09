@@ -86,12 +86,9 @@ func main() {
 	log.Info("s3 client initialized")
 
 	// AI клиент
-	var aiClient ai.Client
-	if cfg.AI.Provider == "mock" {
-		aiClient = ai.NewMockClient()
-		log.Info("using mock AI client")
-	} else {
-		log.Fatal("AI provider not implemented", zap.String("provider", cfg.AI.Provider))
+	aiClient, err := ai.NewProviderClient(cfg.AI, log.GetZapLogger())
+	if err != nil {
+		log.Fatal("failed to init AI client", zap.Error(err), zap.String("provider", cfg.AI.Provider))
 	}
 
 	// Рендерер

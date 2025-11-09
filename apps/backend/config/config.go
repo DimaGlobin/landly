@@ -102,14 +102,26 @@ type CDNConfig struct {
 }
 
 type AIConfig struct {
-	Provider  string          `mapstructure:"provider"`
-	OpenAI    OpenAIConfig    `mapstructure:"openai"`
-	Anthropic AnthropicConfig `mapstructure:"anthropic"`
+	Provider       string            `mapstructure:"provider"`
+	ResponseFormat string            `mapstructure:"response_format"`
+	MaxRetries     int               `mapstructure:"max_retries"`
+	Timeout        time.Duration     `mapstructure:"timeout"`
+	OpenAI         OpenAIConfig      `mapstructure:"openai"`
+	Anthropic      AnthropicConfig   `mapstructure:"anthropic"`
+	OpenRouter     OpenRouterConfig  `mapstructure:"openrouter"`
 }
 
 type OpenAIConfig struct {
 	APIKey      string  `mapstructure:"api_key"`
 	Model       string  `mapstructure:"model"`
+	MaxTokens   int     `mapstructure:"max_tokens"`
+	Temperature float64 `mapstructure:"temperature"`
+}
+
+type OpenRouterConfig struct {
+	APIKey      string  `mapstructure:"api_key"`
+	Model       string  `mapstructure:"model"`
+	BaseURL     string  `mapstructure:"base_url"`
 	MaxTokens   int     `mapstructure:"max_tokens"`
 	Temperature float64 `mapstructure:"temperature"`
 }
@@ -192,6 +204,22 @@ func Load() (*Config, error) {
 		cfg.App.BaseURL = "http://localhost:8080"
 	}
 
+	if cfg.AI.Provider == "" {
+		cfg.AI.Provider = "mock"
+	}
+	if cfg.AI.ResponseFormat == "" {
+		cfg.AI.ResponseFormat = "json_schema"
+	}
+	if cfg.AI.Timeout <= 0 {
+		cfg.AI.Timeout = 45 * time.Second
+	}
+	if cfg.AI.MaxRetries < 0 {
+		cfg.AI.MaxRetries = 0
+	}
+	if cfg.AI.OpenRouter.BaseURL == "" {
+		cfg.AI.OpenRouter.BaseURL = "https://openrouter.ai/api/v1"
+	}
+
 	// Валидация
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
@@ -258,6 +286,33 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.Storage.S3.Bucket == "" {
 		return fmt.Errorf("storage.s3.bucket is required")
+	}
+
+	switch strings.ToLower(cfg.AI.Provider) {
+	case "mock":
+	case "openai":
+		if cfg.AI.OpenAI.APIKey == "" {
+			return fmt.Errorf("ai.openai.api_key is required when provider=openai")
+		}
+		if cfg.AI.OpenAI.Model == "" {
+			return fmt.Errorf("ai.openai.model is required when provider=openai")
+		}
+	case "openrouter":
+		if cfg.AI.OpenRouter.APIKey == "" {
+			return fmt.Errorf("ai.openrouter.api_key is required when provider=openrouter")
+		}
+		if cfg.AI.OpenRouter.Model == "" {
+			return fmt.Errorf("ai.openrouter.model is required when provider=openrouter")
+		}
+	case "anthropic":
+		if cfg.AI.Anthropic.APIKey == "" {
+			return fmt.Errorf("ai.anthropic.api_key is required when provider=anthropic")
+		}
+		if cfg.AI.Anthropic.Model == "" {
+			return fmt.Errorf("ai.anthropic.model is required when provider=anthropic")
+		}
+	default:
+		return fmt.Errorf("ai.provider %q is not supported", cfg.AI.Provider)
 	}
 
 	return nil

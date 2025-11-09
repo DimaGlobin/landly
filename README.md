@@ -65,6 +65,35 @@ export LANDLY_AUTH_JWT_SECRET="your-secret"
 export LANDLY_DATABASE_POSTGRES_HOST="localhost"
 ```
 
+### AI генерация
+
+По умолчанию используется мок-клиент (демо-ответ). Чтобы включить реальную генерацию:
+
+1. Укажите провайдера в `config.local.yml` или через env:
+
+```bash
+export LANDLY_AI_PROVIDER=openai        # или openrouter / anthropic
+export LANDLY_AI_RESPONSE_FORMAT=json_schema
+export LANDLY_AI_TIMEOUT=45s
+```
+
+2. Передайте ключ и модель провайдера:
+
+```bash
+# OpenAI
+export LANDLY_AI_OPENAI_API_KEY=sk-...
+export LANDLY_AI_OPENAI_MODEL=gpt-4o-mini
+
+# либо OpenRouter
+export LANDLY_AI_OPENROUTER_API_KEY=or-...
+export LANDLY_AI_OPENROUTER_MODEL=openrouter/auto
+export LANDLY_AI_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+```
+
+3. Перезапустите backend (`make dev` или `go run cmd/api/main.go`).
+
+Поля `ai.max_retries`, `ai.timeout` и `ai.response_format` управляют повторными запросами, лимитами и форматом JSON-ответа от модели.
+
 ## Разработка
 
 ### Backend

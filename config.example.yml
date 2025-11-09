@@ -11,12 +11,22 @@
 #     port: 5432
 #     password: my-local-password
 
-# Example: Use real OpenAI
+# Example: Enable OpenAI with structured JSON-output
 # ai:
 #   provider: openai
+#   response_format: json_schema
+#   timeout: 45s
 #   openai:
 #     api_key: sk-...
-#     model: gpt-4-turbo-preview
+#     model: gpt-4o-mini
+
+# Example: Route through OpenRouter
+# ai:
+#   provider: openrouter
+#   openrouter:
+#     api_key: or-...
+#     model: openrouter/auto
+#     base_url: https://openrouter.ai/api/v1
 
 # Example: Custom S3 endpoint
 # storage:
@@ -32,4 +42,3 @@
 # Example: Override public base URL used for published links
 # app:
 #   base_url: https://my-domain.example
-

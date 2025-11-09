@@ -64,11 +64,9 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	}
 
 	// AI клиент
-	var aiClient services.AIClient
-	if cfg.AI.Provider == "mock" {
-		aiClient = ai.NewMockClient()
-	} else {
-		return nil, fmt.Errorf("AI provider not implemented: %s", cfg.AI.Provider)
+	aiClient, err := ai.NewProviderClient(cfg.AI, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init AI client: %w", err)
 	}
 
 	// Renderer
