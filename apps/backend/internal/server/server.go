@@ -49,6 +49,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	messageRepo := repositories.NewGenerationMessageRepository(qb)
+	schemaVersionRepo := repositories.NewSchemaVersionRepository(qb)
 
 	// S3 клиент
 	s3Client, err := s3.NewClient(s3.Config{
@@ -77,10 +78,11 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	// Services
 	authService := services.NewAuthService(userRepo, cfg.Auth.JWT.Secret, cfg.Auth.JWT.AccessTokenTTL, cfg.Auth.JWT.RefreshTokenTTL)
 	projectService := services.NewProjectService(projectRepo)
-	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
+	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, schemaVersionRepo, aiClient)
 	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
-	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, aiClient)
+	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, schemaVersionRepo, aiClient)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
+	schemaVersionService := services.NewSchemaVersionService(projectRepo, schemaVersionRepo)
 
 	// HTTP handlers
 	authHandler := handlers.NewAuthHandler(authService)
@@ -88,6 +90,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	generateHandler := handlers.NewGenerateHandler(generateService, publishService, cfg.App.BaseURL)
 	simpleGenerateHandler := handlers.NewSimpleGenerateHandler(simpleGenerateService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
+	schemaHandler := handlers.NewSchemaHandler(schemaVersionService)
 
 	// Router
 	router := handlers.NewRouter(
@@ -96,6 +99,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 		generateHandler,
 		simpleGenerateHandler,
 		analyticsHandler,
+		schemaHandler,
 		cfg.Auth.JWT.Secret,
 		cfg.Server.CORS.AllowedOrigins,
 		cfg.Server.CORS.AllowedMethods,

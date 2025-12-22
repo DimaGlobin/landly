@@ -29,7 +29,8 @@ func TestGenerateService_Integration_GenerateSite(t *testing.T) {
 	project := testhelpers.CreateTestProject(t, qb, user.ID, "Integration Test Project", "SaaS")
 
 	aiClient := ai.NewMockClient()
-	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
+	schemaVersionRepo := repositories.NewSchemaVersionRepository(qb)
+	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, schemaVersionRepo, aiClient)
 
 	ctx := context.Background()
 	req := &domain.GenerateRequest{
@@ -65,7 +66,8 @@ func TestGenerateService_Integration_GetGenerationStatusAndResult(t *testing.T) 
 	project := testhelpers.CreateTestProject(t, qb, user.ID, "Status Test Project", "Analytics")
 
 	aiClient := ai.NewMockClient()
-	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
+	schemaVersionRepo := repositories.NewSchemaVersionRepository(qb)
+	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, schemaVersionRepo, aiClient)
 
 	ctx := context.Background()
 	req := &domain.GenerateRequest{
@@ -108,7 +110,8 @@ func TestGenerateService_Integration_GenerateSiteAIError(t *testing.T) {
 		PaymentURL: "https://example.com/fail",
 	}
 
-	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, failingAIClient{})
+	schemaVersionRepo := repositories.NewSchemaVersionRepository(qb)
+	generateService := NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, schemaVersionRepo, failingAIClient{})
 
 	session, err := generateService.GenerateSite(ctx, user.ID.String(), project.ID.String(), req)
 	require.Error(t, err)
