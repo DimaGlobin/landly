@@ -221,7 +221,7 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 	}
 
 	// Сохраняем текущую схему как версию перед обновлением
-	if project.SchemaJSON != "" {
+	if project.SchemaJSON != "" && s.versionRepo != nil {
 		currentVersion := domain.NewSchemaVersion(
 			projectID,
 			userID,
@@ -245,16 +245,18 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 		return nil, domain.ErrInternal.WithError(err)
 	}
 
-	// Сохраняем новую версию
-	newVersion := domain.NewSchemaVersion(
-		projectID,
-		userID,
-		schemaJSON,
-		domain.SchemaVersionSourceGenerate,
-	)
-	if err := s.versionRepo.Create(ctx, newVersion); err != nil {
-		log.Warn("failed to save new schema version", zap.Error(err))
-		// Продолжаем, даже если не удалось сохранить версию
+	// Сохраняем новую версию (если versionRepo доступен)
+	if s.versionRepo != nil {
+		newVersion := domain.NewSchemaVersion(
+			projectID,
+			userID,
+			schemaJSON,
+			domain.SchemaVersionSourceGenerate,
+		)
+		if err := s.versionRepo.Create(ctx, newVersion); err != nil {
+			log.Warn("failed to save new schema version", zap.Error(err))
+			// Продолжаем, даже если не удалось сохранить версию
+		}
 	}
 
 	log.Info("schema saved to project successfully",
@@ -398,7 +400,7 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 	}
 
 	// Сохраняем текущую схему как версию перед обновлением
-	if project.SchemaJSON != "" {
+	if project.SchemaJSON != "" && s.versionRepo != nil {
 		currentVersion := domain.NewSchemaVersion(
 			project.ID,
 			project.UserID,
@@ -419,16 +421,18 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		return nil, nil, err
 	}
 
-	// Сохраняем новую версию
-	newVersion := domain.NewSchemaVersion(
-		project.ID,
-		project.UserID,
-		schemaJSON,
-		domain.SchemaVersionSourceChat,
-	)
-	if err := s.versionRepo.Create(ctx, newVersion); err != nil {
-		log.Warn("failed to save new schema version", zap.Error(err))
-		// Продолжаем, даже если не удалось сохранить версию
+	// Сохраняем новую версию (если versionRepo доступен)
+	if s.versionRepo != nil {
+		newVersion := domain.NewSchemaVersion(
+			project.ID,
+			project.UserID,
+			schemaJSON,
+			domain.SchemaVersionSourceChat,
+		)
+		if err := s.versionRepo.Create(ctx, newVersion); err != nil {
+			log.Warn("failed to save new schema version", zap.Error(err))
+			// Продолжаем, даже если не удалось сохранить версию
+		}
 	}
 
 	log.Info("schema saved successfully",
