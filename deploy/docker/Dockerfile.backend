@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:1.23-alpine AS builder
 
+# Update Alpine packages to fix security vulnerabilities
+RUN apk update && apk upgrade --no-cache
+
 WORKDIR /build
 
 # Установка зависимостей для компиляции
@@ -21,9 +24,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o worker ./cmd/worker
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.21
 
-RUN apk --no-cache add ca-certificates netcat-openbsd
+# Update packages and install dependencies
+RUN apk update && apk upgrade --no-cache && \
+    apk --no-cache add ca-certificates netcat-openbsd
 
 WORKDIR /app
 
