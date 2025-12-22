@@ -49,6 +49,8 @@ landly/
 
 ## Конфигурация
 
+### Локальная разработка
+
 Базовая конфигурация в `config.yml` (готова для docker-compose).
 
 Для локальной разработки создайте `config.local.yml`:
@@ -64,6 +66,44 @@ Environment variables с префиксом `LANDLY_` переопределяю
 export LANDLY_AUTH_JWT_SECRET="your-secret"
 export LANDLY_DATABASE_POSTGRES_HOST="localhost"
 ```
+
+### Production / Serverless Deployment
+
+В production образ **не содержит config.yml** (по соображениям безопасности).  
+Вся конфигурация должна передаваться через environment variables.
+
+**Обязательные переменные окружения:**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `LANDLY_AUTH_JWT_SECRET` | JWT secret (min 32 chars) | `super-secret-key-at-least-32-characters` |
+| `LANDLY_DATABASE_POSTGRES_HOST` | PostgreSQL host | `rc1a-xxx.mdb.yandexcloud.net` |
+| `LANDLY_DATABASE_POSTGRES_PASSWORD` | PostgreSQL password | `your-db-password` |
+| `LANDLY_STORAGE_S3_BUCKET` | S3 bucket name | `landly-sites` |
+| `LANDLY_STORAGE_S3_ENDPOINT` | S3 endpoint | `storage.yandexcloud.net` |
+| `LANDLY_STORAGE_S3_ACCESS_KEY` | S3 access key | `YCAxxxxx` |
+| `LANDLY_STORAGE_S3_SECRET_KEY` | S3 secret key | `YCPxxxxx` |
+
+**Опциональные переменные:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8080` | HTTP listen port (set by Yandex Serverless) |
+| `LANDLY_APP_ENV` | `production` | Environment name |
+| `LANDLY_DATABASE_POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `LANDLY_DATABASE_POSTGRES_USER` | `landly` | PostgreSQL user |
+| `LANDLY_DATABASE_POSTGRES_DBNAME` | `landly` | PostgreSQL database |
+| `LANDLY_DATABASE_POSTGRES_SSLMODE` | `require` | SSL mode |
+| `LANDLY_STORAGE_S3_USE_SSL` | `true` | Use HTTPS for S3 |
+| `LANDLY_AI_PROVIDER` | `mock` | AI provider (mock/openai/anthropic) |
+| `LANDLY_BOOTSTRAP_MODE` | `0` | Skip required validation (for health checks) |
+
+**Порядок приоритета конфигурации** (от низшего к высшему):
+1. Встроенные дефолты
+2. `config.yml` (если есть)
+3. `config.local.yml` (если есть)
+4. Environment variables (`LANDLY_*`)
+5. `PORT` env var (наивысший приоритет для listen address)
 
 ## Разработка
 
