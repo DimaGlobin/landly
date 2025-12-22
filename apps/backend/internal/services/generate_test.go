@@ -24,7 +24,7 @@ func TestGenerateService_GenerateLanding_Success(t *testing.T) {
 	messageRepo := new(mocks.GenerationMessageRepositoryMock)
 	aiClient := new(mocks.AIClientMock)
 
-	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, aiClient)
+	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, nil, aiClient)
 
 	project := &domain.Project{ID: projectID, UserID: userID}
 	projectRepo.On("GetByID", ctx, projectID.String()).Return(project, nil).Once()
@@ -61,7 +61,7 @@ func TestGenerateService_GenerateLanding_AIError(t *testing.T) {
 	messageRepo := new(mocks.GenerationMessageRepositoryMock)
 	aiClient := new(mocks.AIClientMock)
 
-	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, aiClient)
+	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, nil, aiClient)
 
 	project := &domain.Project{ID: projectID, UserID: userID}
 	projectRepo.On("GetByID", ctx, projectID.String()).Return(project, nil)
@@ -89,7 +89,7 @@ func TestGenerateService_GenerateSite_InvalidUser(t *testing.T) {
 	messageRepo := new(mocks.GenerationMessageRepositoryMock)
 	aiClient := new(mocks.AIClientMock)
 
-	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, aiClient)
+	svc := NewGenerateService(projectRepo, nil, sessionRepo, messageRepo, nil, aiClient)
 
 	sessionRepo.On("Create", ctx, mock.AnythingOfType("*models.GenerationSession")).Return(nil)
 	sessionRepo.On("Update", mock.Anything, mock.AnythingOfType("*models.GenerationSession")).Return(nil)

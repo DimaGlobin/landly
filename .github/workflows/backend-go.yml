@@ -187,10 +187,11 @@ jobs:
       - name: Tag and push to YCR
         run: |
           YCR_IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/landly-backend"
+          GHCR_IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/backend"
           
           # Tag with main and sha
-          docker tag ghcr.io/${{ github.repository }}/backend:main ${YCR_IMAGE}:main
-          docker tag ghcr.io/${{ github.repository }}/backend:main ${YCR_IMAGE}:sha-${{ github.sha }}
+          docker tag ${GHCR_IMAGE}:main ${YCR_IMAGE}:main
+          docker tag ${GHCR_IMAGE}:main ${YCR_IMAGE}:sha-${{ github.sha }}
           
           # Push both tags
           docker push ${YCR_IMAGE}:main
