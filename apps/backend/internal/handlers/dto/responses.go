@@ -98,3 +98,18 @@ type AnalyticsStatsResponse struct {
 	TotalPayClicks int64     `json:"total_pay_clicks"`
 	UniqueVisitors int64     `json:"unique_visitors"`
 }
+
+// Schema version responses
+type SchemaVersionResponse struct {
+	ID         uuid.UUID `json:"id"`
+	ProjectID  uuid.UUID `json:"project_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	CreatedBy  uuid.UUID `json:"created_by"`
+	Source     string    `json:"source"`
+	TokensUsed int       `json:"tokens_used"`
+}
+
+type SchemaVersionsListResponse struct {
+	Versions []SchemaVersionResponse `json:"versions"`
+	Total    int                     `json:"total"`
+}

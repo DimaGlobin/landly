@@ -126,6 +126,20 @@ class ApiClient {
       referrer,
     })
   }
+
+  // Schema versions
+  async getSchemaVersions(projectId: string, limit?: number) {
+    const params = limit ? { limit } : {}
+    const { data } = await this.client.get(`/v1/projects/${projectId}/schema/versions`, { params })
+    return data
+  }
+
+  async revertSchema(projectId: string, versionId: string) {
+    const { data } = await this.client.post(`/v1/projects/${projectId}/schema/revert`, {
+      version_id: versionId,
+    })
+    return data
+  }
 }
 
 export const api = new ApiClient()

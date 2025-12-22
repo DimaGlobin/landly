@@ -58,11 +58,19 @@ services:
     container_name: landly-backend
     environment:
       LANDLY_AUTH_JWT_SECRET: dev-secret-change-in-production-please
+      LANDLY_DATABASE_POSTGRES_HOST: postgres
+      LANDLY_DATABASE_POSTGRES_PORT: 5432
+      LANDLY_DATABASE_POSTGRES_USER: landly
+      LANDLY_DATABASE_POSTGRES_PASSWORD: landly
+      LANDLY_DATABASE_POSTGRES_DBNAME: landly
+      LANDLY_DATABASE_POSTGRES_SSLMODE: disable
       LANDLY_STORAGE_S3_BUCKET: landly-sites
       LANDLY_STORAGE_S3_ENDPOINT: minio:9000
       LANDLY_STORAGE_S3_ACCESS_KEY: minioadmin
       LANDLY_STORAGE_S3_SECRET_KEY: minioadmin
       LANDLY_APP_BASE_URL: http://localhost:8080
+      WAIT_FOR_DB: 1
+      RUN_MIGRATIONS: 1
     ports:
       - "8080:8080"
     depends_on:

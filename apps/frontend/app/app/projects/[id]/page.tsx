@@ -21,7 +21,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LandingPreview } from '@/components/landing-preview'
-import { Copy, ExternalLink, PauseCircle, RefreshCcw } from 'lucide-react'
+import { SchemaDiff } from '@/components/schema-diff'
+import { SchemaHistory } from '@/components/schema-history'
+import { Copy, ExternalLink, PauseCircle, RefreshCcw, History } from 'lucide-react'
 
 const projectStatusLabels: Record<Project['status'], string> = {
   draft: 'Черновик',
@@ -72,6 +74,7 @@ export default function ProjectPage() {
 
   const [project, setProject] = useState<Project | null>(null)
   const [schema, setSchema] = useState<LandingSchema | null>(null)
+  const [previousSchema, setPreviousSchema] = useState<LandingSchema | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isPublishing, setIsPublishing] = useState(false)
   const [isUnpublishing, setIsUnpublishing] = useState(false)
@@ -82,6 +85,7 @@ export default function ProjectPage() {
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'publish' | 'unpublish' | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -112,7 +116,13 @@ export default function ProjectPage() {
 
     setChatSession(chatData.session)
     setMessages(chatData.messages ?? [])
-    setSchema(parseSchema(chatData.session.schema_json))
+    
+    const newSchema = parseSchema(chatData.session.schema_json)
+    // Сохраняем предыдущую схему для diff
+    if (schema && newSchema) {
+      setPreviousSchema(schema)
+    }
+    setSchema(newSchema)
 
     setProject((prev) => {
       if (!prev) return prev
@@ -177,15 +187,28 @@ export default function ProjectPage() {
 
     try {
       setIsSending(true)
+      // Сохраняем текущую схему перед генерацией для diff
+      if (schema) {
+        setPreviousSchema(schema)
+      }
       const chatData = await api.sendChatMessage(projectId, trimmed)
       applyChat(chatData)
       setInput('')
+      // Очищаем diff через 5 секунд
+      setTimeout(() => {
+        setPreviousSchema(null)
+      }, 5000)
     } catch (error: any) {
       console.error('Failed to send message', error)
       alert('Не удалось отправить сообщение. Попробуйте ещё раз.')
     } finally {
       setIsSending(false)
     }
+  }
+
+  const handleRevert = async () => {
+    await fetchProjectData()
+    setShowHistory(false)
   }
 
   const executePublish = async () => {
@@ -334,16 +357,26 @@ export default function ProjectPage() {
               {schema && (
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
+                    onClick={() => setShowHistory(true)}
+                    variant="ghost"
+                    className="h-10 rounded-full border border-white/50 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white"
+                  >
+                    <History className="mr-2 h-4 w-4" />
+                    История
+                  </Button>
+                  <Button
                     onClick={openPublishConfirm}
-                    disabled={isPublishing}
+                    disabled={isPublishing || isSending}
                     className={`h-10 rounded-full px-5 text-sm font-semibold transition hover:-translate-y-0.5 focus:ring-2 focus:ring-offset-0 ${
                       project.status === 'published'
                         ? 'border border-blue-400/50 bg-blue-500/10 text-blue-700 hover:bg-blue-500/20'
                         : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
+                    } ${isSending ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {isPublishing ? (
                       'Публикация...'
+                    ) : isSending ? (
+                      'Генерация...'
                     ) : project.status === 'published' ? (
                       <span className="flex items-center gap-2">
                         <RefreshCcw className="h-4 w-4" />
@@ -458,6 +491,12 @@ export default function ProjectPage() {
                   )
                 })
               )}
+              {isSending && (
+                <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                  <span>AI генерирует схему...</span>
+                </div>
+              )}
               <div ref={bottomRef} />
             </div>
             <form className="border-t border-white/50 bg-white/70 px-6 py-4" onSubmit={handleSubmit}>
@@ -502,6 +541,10 @@ export default function ProjectPage() {
               </CardContent>
             </Card>
 
+            {previousSchema && schema && (
+              <SchemaDiff oldSchema={previousSchema} newSchema={schema} />
+            )}
+
             {chatSession && (
               <Card className="surface-card border-white/40 text-slate-900">
                 <CardHeader className="border-b border-white/50">
@@ -539,6 +582,24 @@ export default function ProjectPage() {
           </div>
         </div>
       </div>
+
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">История изменений схемы</h3>
+              <Button
+                variant="ghost"
+                onClick={() => setShowHistory(false)}
+                className="h-8 w-8 rounded-full p-0"
+              >
+                ×
+              </Button>
+            </div>
+            <SchemaHistory projectId={projectId} onRevert={handleRevert} />
+          </div>
+        </div>
+      )}
 
       {confirmAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
