@@ -74,60 +74,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for GHCR
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/frontend
-          tags: |
-            type=ref,event=branch
-            type=sha
-
-      - name: Build and push to GHCR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deploy/docker/Dockerfile.frontend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Yandex Container Registry push
+      # Login to YCR before build
       - name: Install Yandex Cloud CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /opt/yc -n
           echo "/opt/yc/bin" >> $GITHUB_PATH
 
-      - name: Authenticate with Yandex Cloud
+      - name: Login to Yandex Container Registry
         run: |
           echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}' > /tmp/yc-key.json
           /opt/yc/bin/yc config set service-account-key /tmp/yc-key.json
           /opt/yc/bin/yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
-
-      - name: Get IAM token and login to YCR
-        run: |
           IAM_TOKEN=$(/opt/yc/bin/yc iam create-token)
           echo "${IAM_TOKEN}" | docker login --username iam --password-stdin cr.yandex
           rm -f /tmp/yc-key.json
 
-      - name: Tag and push to YCR
-        run: |
-          YCR_IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/landly-frontend"
-          GHCR_IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/frontend"
-          
-          # Tag with main and sha
-          docker tag ${GHCR_IMAGE}:main ${YCR_IMAGE}:main
-          docker tag ${GHCR_IMAGE}:main ${YCR_IMAGE}:sha-${{ github.sha }}
-          
-          # Push both tags
-          docker push ${YCR_IMAGE}:main
-          docker push ${YCR_IMAGE}:sha-${{ github.sha }}
-          
-          echo "✅ Pushed to YCR:"
-          echo "  - ${YCR_IMAGE}:main"
-          echo "  - ${YCR_IMAGE}:sha-${{ github.sha }}"
+      - name: Build and push to GHCR and YCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.frontend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/landly/frontend:main
+            ghcr.io/${{ github.repository_owner }}/landly/frontend:sha-${{ github.sha }}
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/landly-frontend:main
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/landly-frontend:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy

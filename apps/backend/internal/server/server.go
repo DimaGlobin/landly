@@ -82,7 +82,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
 	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, schemaVersionRepo, aiClient)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
-	schemaVersionService := services.NewSchemaVersionService(projectRepo, schemaVersionRepo)
+	schemaVersionService := services.NewSchemaVersionService(schemaVersionRepo, projectRepo)
 
 	// HTTP handlers
 	authHandler := handlers.NewAuthHandler(authService)

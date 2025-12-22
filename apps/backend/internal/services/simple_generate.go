@@ -92,7 +92,7 @@ func (s *SimpleGenerateService) GenerateSimple(ctx context.Context, userID, proj
 	}
 
 	// Сохраняем текущую схему как версию перед обновлением
-	if project.SchemaJSON != "" {
+	if project.SchemaJSON != "" && s.versionRepo != nil {
 		currentVersion := domain.NewSchemaVersion(
 			projectUUID,
 			userUUID,
@@ -121,16 +121,18 @@ func (s *SimpleGenerateService) GenerateSimple(ctx context.Context, userID, proj
 		return nil, fmt.Errorf("ошибка сохранения схемы: %w", err)
 	}
 
-	// Сохраняем новую версию
-	newVersion := domain.NewSchemaVersion(
-		projectUUID,
-		userUUID,
-		schemaJSON,
-		domain.SchemaVersionSourceGenerate,
-	)
-	if err := s.versionRepo.Create(ctx, newVersion); err != nil {
-		log.Warn("failed to save new schema version", zap.Error(err))
-		// Продолжаем, даже если не удалось сохранить версию
+	// Сохраняем новую версию (если versionRepo доступен)
+	if s.versionRepo != nil {
+		newVersion := domain.NewSchemaVersion(
+			projectUUID,
+			userUUID,
+			schemaJSON,
+			domain.SchemaVersionSourceGenerate,
+		)
+		if err := s.versionRepo.Create(ctx, newVersion); err != nil {
+			log.Warn("failed to save new schema version", zap.Error(err))
+			// Продолжаем, даже если не удалось сохранить версию
+		}
 	}
 
 	log.Info("schema saved to project successfully",
