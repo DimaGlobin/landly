@@ -69,6 +69,7 @@ func main() {
 	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	messageRepo := repositories.NewGenerationMessageRepository(qb)
+	schemaVersionRepo := repositories.NewSchemaVersionRepository(qb)
 
 	// S3 клиент
 	s3Client, err := s3.NewClient(s3.Config{
@@ -100,17 +101,19 @@ func main() {
 	// Сервисы
 	authService := services.NewAuthService(userRepo, cfg.Auth.JWT.Secret, cfg.Auth.JWT.AccessTokenTTL, cfg.Auth.JWT.RefreshTokenTTL)
 	projectService := services.NewProjectService(projectRepo)
-	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, aiClient)
+	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, schemaVersionRepo, aiClient)
 	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
+	schemaVersionService := services.NewSchemaVersionService(schemaVersionRepo, projectRepo)
+	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, schemaVersionRepo, aiClient)
 
 	// HTTP handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	projectHandler := handlers.NewProjectHandler(projectService, publishTargetRepo, cfg.App.BaseURL)
 	generateHandler := handlers.NewGenerateHandler(generateService, publishService, cfg.App.BaseURL)
-	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, aiClient)
 	simpleGenerateHandler := handlers.NewSimpleGenerateHandler(simpleGenerateService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
+	schemaHandler := handlers.NewSchemaHandler(schemaVersionService)
 
 	// Router
 	router := handlers.NewRouter(
@@ -119,6 +122,7 @@ func main() {
 		generateHandler,
 		simpleGenerateHandler,
 		analyticsHandler,
+		schemaHandler,
 		cfg.Auth.JWT.Secret,
 		cfg.Server.CORS.AllowedOrigins,
 		cfg.Server.CORS.AllowedMethods,

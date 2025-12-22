@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/landly/backend/internal/logger"
+	"github.com/landly/backend/internal/schema"
 	domain "github.com/landly/backend/internal/models"
 	"go.uber.org/zap"
 )
@@ -24,6 +25,7 @@ type GenerateService struct {
 	integrationRepo domain.IntegrationRepository
 	sessionRepo     domain.GenerationSessionRepository
 	messageRepo     domain.GenerationMessageRepository
+	versionRepo     domain.SchemaVersionRepository
 	aiClient        AIClient
 }
 
@@ -33,6 +35,7 @@ func NewGenerateService(
 	integrationRepo domain.IntegrationRepository,
 	sessionRepo domain.GenerationSessionRepository,
 	messageRepo domain.GenerationMessageRepository,
+	versionRepo domain.SchemaVersionRepository,
 	aiClient AIClient,
 ) *GenerateService {
 	return &GenerateService{
@@ -40,6 +43,7 @@ func NewGenerateService(
 		integrationRepo: integrationRepo,
 		sessionRepo:     sessionRepo,
 		messageRepo:     messageRepo,
+		versionRepo:     versionRepo,
 		aiClient:        aiClient,
 	}
 }
@@ -186,10 +190,15 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 		zap.String("user_id", userID.String()),
 	)
 
+	startTime := time.Now()
 	log.Info("calling AI client for schema generation")
 	schemaJSON, err := s.aiClient.GenerateLandingSchema(ctx, prompt, paymentURL)
+	duration := time.Since(startTime)
 	if err != nil {
-		log.Error("AI generation failed", zap.Error(err))
+		log.Error("AI generation failed",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
 		// Обновляем статус сессии на ошибку
 		session.Status = domain.GenerationStatusFailed
 		return nil, domain.ErrInternal.WithMessage("AI generation failed")
@@ -197,16 +206,60 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 
 	log.Info("AI generated schema successfully",
 		zap.Int("schema_length", len(schemaJSON)),
+		zap.Duration("duration_ms", duration),
+		zap.Int("tokens_used", 0), // Mocked AI, no tokens
 	)
+
+	// Валидируем схему перед сохранением
+	if err := schema.ValidateSchema(schemaJSON); err != nil {
+		log.Error("schema validation failed",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
+		session.Status = domain.GenerationStatusFailed
+		return nil, domain.ErrBadRequest.WithMessage(fmt.Sprintf("invalid schema: %v", err))
+	}
+
+	// Сохраняем текущую схему как версию перед обновлением
+	if project.SchemaJSON != "" {
+		currentVersion := domain.NewSchemaVersion(
+			projectID,
+			userID,
+			project.SchemaJSON,
+			domain.SchemaVersionSourceGenerate,
+		)
+		if err := s.versionRepo.Create(ctx, currentVersion); err != nil {
+			log.Warn("failed to save current schema as version", zap.Error(err))
+			// Продолжаем, даже если не удалось сохранить версию
+		}
+	}
 
 	// Сохраняем схему в проект
 	log.Info("saving schema to project")
 	if err := s.projectRepo.UpdateSchema(ctx, projectID.String(), schemaJSON); err != nil {
-		log.Error("failed to save schema to project", zap.Error(err))
+		log.Error("failed to save schema to project",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
 		session.Status = domain.GenerationStatusFailed
 		return nil, domain.ErrInternal.WithError(err)
 	}
-	log.Info("schema saved to project successfully")
+
+	// Сохраняем новую версию
+	newVersion := domain.NewSchemaVersion(
+		projectID,
+		userID,
+		schemaJSON,
+		domain.SchemaVersionSourceGenerate,
+	)
+	if err := s.versionRepo.Create(ctx, newVersion); err != nil {
+		log.Warn("failed to save new schema version", zap.Error(err))
+		// Продолжаем, даже если не удалось сохранить версию
+	}
+
+	log.Info("schema saved to project successfully",
+		zap.Duration("duration_ms", duration),
+	)
 
 	session.Status = domain.GenerationStatusCompleted
 	session.SchemaJSON = schemaJSON
@@ -308,11 +361,16 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		zap.String("user_id", project.UserID.String()),
 	)
 
+	startTime := time.Now()
 	log.Info("generating landing schema via chat", zap.String("prompt_snippet", truncateForLog(prompt)))
 
 	schemaJSON, err := s.aiClient.GenerateLandingSchema(ctx, prompt, "")
+	duration := time.Since(startTime)
 	if err != nil {
-		log.Error("chat generation failed", zap.Error(err))
+		log.Error("chat generation failed",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
 		session.Status = domain.GenerationStatusFailed
 		session.UpdatedAt = now
 		session.CompletedAt = ptrTime(now)
@@ -320,10 +378,62 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		return nil, nil, domain.ErrInternal.WithError(err)
 	}
 
+	log.Info("AI generated schema successfully",
+		zap.Int("schema_length", len(schemaJSON)),
+		zap.Duration("duration_ms", duration),
+		zap.Int("tokens_used", 0), // Mocked AI, no tokens
+	)
+
+	// Валидируем схему перед сохранением
+	if err := schema.ValidateSchema(schemaJSON); err != nil {
+		log.Error("schema validation failed",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
+		session.Status = domain.GenerationStatusFailed
+		session.UpdatedAt = now
+		session.CompletedAt = ptrTime(now)
+		_ = s.sessionRepo.Update(ctx, session)
+		return nil, nil, domain.ErrBadRequest.WithMessage(fmt.Sprintf("invalid schema: %v", err))
+	}
+
+	// Сохраняем текущую схему как версию перед обновлением
+	if project.SchemaJSON != "" {
+		currentVersion := domain.NewSchemaVersion(
+			project.ID,
+			project.UserID,
+			project.SchemaJSON,
+			domain.SchemaVersionSourceChat,
+		)
+		if err := s.versionRepo.Create(ctx, currentVersion); err != nil {
+			log.Warn("failed to save current schema as version", zap.Error(err))
+			// Продолжаем, даже если не удалось сохранить версию
+		}
+	}
+
 	if err := s.projectRepo.UpdateSchema(ctx, project.ID.String(), schemaJSON); err != nil {
-		log.Error("failed to persist generated schema", zap.Error(err))
+		log.Error("failed to persist generated schema",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
 		return nil, nil, err
 	}
+
+	// Сохраняем новую версию
+	newVersion := domain.NewSchemaVersion(
+		project.ID,
+		project.UserID,
+		schemaJSON,
+		domain.SchemaVersionSourceChat,
+	)
+	if err := s.versionRepo.Create(ctx, newVersion); err != nil {
+		log.Warn("failed to save new schema version", zap.Error(err))
+		// Продолжаем, даже если не удалось сохранить версию
+	}
+
+	log.Info("schema saved successfully",
+		zap.Duration("duration_ms", duration),
+	)
 
 	project.SchemaJSON = schemaJSON
 	project.Status = domain.ProjectStatusGenerated

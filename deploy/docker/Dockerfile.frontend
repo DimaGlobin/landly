@@ -34,7 +34,8 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
+# PORT is set at runtime, not hardcoded
+# Next.js standalone server.js reads process.env.PORT automatically
 
 CMD ["node", "server.js"]
 

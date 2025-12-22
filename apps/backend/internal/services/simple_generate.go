@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/landly/backend/internal/logger"
+	"github.com/landly/backend/internal/schema"
 	domain "github.com/landly/backend/internal/models"
 	"go.uber.org/zap"
 )
@@ -14,13 +16,15 @@ import (
 // SimpleGenerateService простой сервис генерации
 type SimpleGenerateService struct {
 	projectRepo domain.ProjectRepository
+	versionRepo domain.SchemaVersionRepository
 	aiClient    AIClient
 }
 
 // NewSimpleGenerateService создает новый простой сервис генерации
-func NewSimpleGenerateService(projectRepo domain.ProjectRepository, aiClient AIClient) *SimpleGenerateService {
+func NewSimpleGenerateService(projectRepo domain.ProjectRepository, versionRepo domain.SchemaVersionRepository, aiClient AIClient) *SimpleGenerateService {
 	return &SimpleGenerateService{
 		projectRepo: projectRepo,
+		versionRepo: versionRepo,
 		aiClient:    aiClient,
 	}
 }
@@ -60,15 +64,46 @@ func (s *SimpleGenerateService) GenerateSimple(ctx context.Context, userID, proj
 	_ = projectUUID // Используем переменную для избежания ошибки компиляции
 
 	// Генерируем схему с помощью AI
+	startTime := time.Now()
 	log.Info("generating schema with AI")
 	schemaJSON, err := s.aiClient.GenerateLandingSchema(ctx, prompt, paymentURL)
+	duration := time.Since(startTime)
 	if err != nil {
+		log.Error("AI generation failed",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
 		return nil, fmt.Errorf("ошибка AI генерации: %w", err)
 	}
 
 	log.Info("AI generated schema successfully",
 		zap.Int("schema_length", len(schemaJSON)),
+		zap.Duration("duration_ms", duration),
+		zap.Int("tokens_used", 0), // Mocked AI, no tokens
 	)
+
+	// Валидируем схему перед сохранением
+	if err := schema.ValidateSchema(schemaJSON); err != nil {
+		log.Error("schema validation failed",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
+		return nil, fmt.Errorf("невалидная схема: %w", err)
+	}
+
+	// Сохраняем текущую схему как версию перед обновлением
+	if project.SchemaJSON != "" {
+		currentVersion := domain.NewSchemaVersion(
+			projectUUID,
+			userUUID,
+			project.SchemaJSON,
+			domain.SchemaVersionSourceGenerate,
+		)
+		if err := s.versionRepo.Create(ctx, currentVersion); err != nil {
+			log.Warn("failed to save current schema as version", zap.Error(err))
+			// Продолжаем, даже если не удалось сохранить версию
+		}
+	}
 
 	// Парсим JSON схему
 	var schema map[string]interface{}
@@ -79,10 +114,28 @@ func (s *SimpleGenerateService) GenerateSimple(ctx context.Context, userID, proj
 	// Сохраняем схему в проект
 	log.Info("saving schema to project")
 	if err := s.projectRepo.UpdateSchema(ctx, projectID, schemaJSON); err != nil {
+		log.Error("failed to save schema",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration),
+		)
 		return nil, fmt.Errorf("ошибка сохранения схемы: %w", err)
 	}
 
-	log.Info("schema saved to project successfully")
+	// Сохраняем новую версию
+	newVersion := domain.NewSchemaVersion(
+		projectUUID,
+		userUUID,
+		schemaJSON,
+		domain.SchemaVersionSourceGenerate,
+	)
+	if err := s.versionRepo.Create(ctx, newVersion); err != nil {
+		log.Warn("failed to save new schema version", zap.Error(err))
+		// Продолжаем, даже если не удалось сохранить версию
+	}
+
+	log.Info("schema saved to project successfully",
+		zap.Duration("duration_ms", duration),
+	)
 
 	return schema, nil
 }

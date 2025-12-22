@@ -192,6 +192,11 @@ func Load() (*Config, error) {
 		cfg.App.BaseURL = "http://localhost:8080"
 	}
 
+	// Override server address with PORT env var if set (for serverless containers)
+	if port := os.Getenv("PORT"); port != "" {
+		cfg.Server.HTTP.Addr = ":" + port
+	}
+
 	// Валидация
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err

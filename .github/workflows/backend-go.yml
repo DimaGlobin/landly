@@ -129,6 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: staging
     permissions:
       contents: read
       packages: write
@@ -145,7 +146,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Extract metadata for GHCR
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -154,7 +155,7 @@ jobs:
             type=ref,event=branch
             type=sha
 
-      - name: Build and push
+      - name: Build and push to GHCR
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -164,6 +165,40 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Yandex Container Registry push
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /opt/yc -n
+          echo "/opt/yc/bin" >> $GITHUB_PATH
+
+      - name: Authenticate with Yandex Cloud
+        run: |
+          echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}' > /tmp/yc-key.json
+          /opt/yc/bin/yc config set service-account-key /tmp/yc-key.json
+          /opt/yc/bin/yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+
+      - name: Get IAM token and login to YCR
+        run: |
+          IAM_TOKEN=$(/opt/yc/bin/yc iam create-token)
+          echo "${IAM_TOKEN}" | docker login --username iam --password-stdin cr.yandex
+          rm -f /tmp/yc-key.json
+
+      - name: Tag and push to YCR
+        run: |
+          YCR_IMAGE="cr.yandex/${{ secrets.YC_REGISTRY_ID }}/landly-backend"
+          
+          # Tag with main and sha
+          docker tag ghcr.io/${{ github.repository }}/backend:main ${YCR_IMAGE}:main
+          docker tag ghcr.io/${{ github.repository }}/backend:main ${YCR_IMAGE}:sha-${{ github.sha }}
+          
+          # Push both tags
+          docker push ${YCR_IMAGE}:main
+          docker push ${YCR_IMAGE}:sha-${{ github.sha }}
+          
+          echo "✅ Pushed to YCR:"
+          echo "  - ${YCR_IMAGE}:main"
+          echo "  - ${YCR_IMAGE}:sha-${{ github.sha }}"
 
   deploy:
     name: Deploy

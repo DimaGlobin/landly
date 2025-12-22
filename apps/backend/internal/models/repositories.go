@@ -87,3 +87,10 @@ type AnalyticsRepository interface {
 	GetStats(ctx context.Context, projectID uuid.UUID) (*AnalyticsStats, error)
 	GetEvents(ctx context.Context, projectID uuid.UUID, limit, offset int) ([]*AnalyticsEvent, error)
 }
+
+// SchemaVersionRepository интерфейс репозитория версий схемы
+type SchemaVersionRepository interface {
+	Create(ctx context.Context, version *SchemaVersion) error
+	GetByID(ctx context.Context, id string) (*SchemaVersion, error)
+	GetByProjectID(ctx context.Context, projectID string, limit int) ([]*SchemaVersion, error)
+}

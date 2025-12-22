@@ -42,3 +42,8 @@ type TrackEventRequest struct {
 	Path      string `json:"path" binding:"required"`
 	Referrer  string `json:"referrer"`
 }
+
+// Schema version requests
+type RevertSchemaRequest struct {
+	VersionID string `json:"version_id" binding:"required"`
+}

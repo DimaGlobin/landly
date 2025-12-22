@@ -176,13 +176,27 @@ func (s *PublishService) GetPublishStatus(ctx context.Context, userID, targetID 
 }
 
 // GetPublishedURL получает URL опубликованного сайта
+// Если CDN настроен, возвращает прямую ссылку на CDN, иначе - через наш сервер
 func (s *PublishService) GetPublishedURL(ctx context.Context, userID, targetID string) (string, error) {
 	target, err := s.GetPublishStatus(ctx, userID, targetID)
 	if err != nil {
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/%s", s.publicBaseURL(), target.Subdomain), nil
+	// Получаем URL от publisher (может быть CDN или S3)
+	remotePath := fmt.Sprintf("sites/%s", target.Subdomain)
+	directURL := s.publisher.GetPublicURL(remotePath)
+
+	// Если GetPublicURL вернул URL, который не является нашим сервером,
+	// значит это CDN или прямой S3 URL - используем его
+	publicBase := s.publicBaseURL()
+	if directURL != "" && !strings.HasPrefix(directURL, publicBase) {
+		// Это CDN/S3 URL, возвращаем его напрямую
+		return directURL, nil
+	}
+
+	// Иначе возвращаем URL через наш сервер (fallback для dev окружения)
+	return fmt.Sprintf("%s/sites/%s", publicBase, target.Subdomain), nil
 }
 
 // PublishProject публикует проект

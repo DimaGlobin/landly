@@ -19,6 +19,8 @@ out/
 .env.local
 .env.*.local
 *.env
+# But allow .env.example files
+!.env.example
 
 # Local config overrides
 config.local.yml
