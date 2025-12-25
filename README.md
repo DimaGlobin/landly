@@ -167,10 +167,97 @@ make build            # Собрать все
 make lint             # Запустить линтеры
 ```
 
+## CI/CD
+
+### GitHub Environments
+
+Проект использует GitHub Environment **"staging"** для деплоя в Yandex Cloud Serverless Containers.
+
+### Backend Workflow
+
+При push в `main` (изменения в `apps/backend/**`):
+1. **Unit tests** — запускаются тесты backend
+2. **Integration tests** — тесты с PostgreSQL, Redis, MinIO
+3. **Build** — сборка Docker образа и push в GHCR + Yandex Container Registry
+4. **Deploy** — деплой новой revision в Serverless Container с immutable image digest
+5. **Smoke test** — проверка `/health` и `/readyz` endpoints
+
+### Frontend Workflow
+
+При push в `main` (изменения в `apps/frontend/**`):
+1. **Unit tests** — lint + Jest tests
+2. **Build** — сборка Docker образа с `NEXT_PUBLIC_API_URL` и push в GHCR + YCR
+3. **Deploy** — деплой новой revision в Serverless Container с immutable image digest
+4. **Smoke test** — проверка homepage (HTTP 200)
+
+### Required Secrets (GitHub Environment: staging)
+
+#### Yandex Cloud Infrastructure (Shared)
+
+| Secret | Required | Description | Example |
+|--------|:--------:|-------------|---------|
+| `YC_FOLDER_ID` | ✅ | Yandex Cloud folder ID | `b1gxxxxxxxxx` |
+| `YC_REGISTRY_ID` | ✅ | Container Registry ID | `crpxxxxxxxxx` |
+| `YC_SERVICE_ACCOUNT_KEY_JSON` | ✅ | Service account key (JSON) | `{"id": "...", ...}` |
+| `YC_SERVICE_ACCOUNT_ID` | ✅ | Service account ID | `ajexxxxxxxxx` |
+
+#### Backend Secrets
+
+| Secret | Required | Description | Example |
+|--------|:--------:|-------------|---------|
+| `YCR_REPOSITORY` | ✅ | Repository name in YCR | `landly-backend` |
+| `YC_CONTAINER_ID` | ✅ | Serverless Container ID | `bbsxxxxxxxxx` |
+| `STAGING_URL` | ✅ | Public URL of staging backend | `https://bbsxxxxxxxxx.containers.yandexcloud.net` |
+
+#### Frontend Secrets
+
+| Secret | Required | Description | Example |
+|--------|:--------:|-------------|---------|
+| `YCR_FRONTEND_REPOSITORY` | ✅ | Repository name in YCR | `landly-frontend` |
+| `YC_FRONTEND_CONTAINER_ID` | ✅ | Serverless Container ID | `bbsyyyyyyyyy` |
+| `STAGING_FRONTEND_URL` | ✅ | Public URL of staging frontend | `https://bbsyyyyyyyyy.containers.yandexcloud.net` |
+| `NEXT_PUBLIC_API_URL` | ✅ | Backend API URL (build-time) | `https://api.staging.landly.ru` |
+
+#### Backend Application Configuration (LANDLY_*)
+
+| Secret | Description | Example |
+|--------|-------------|---------|
+| `LANDLY_AUTH_JWT_SECRET` | JWT secret (min 32 chars) | `your-super-secret-production-key` |
+| `LANDLY_DATABASE_POSTGRES_HOST` | PostgreSQL host | `rc1a-xxx.mdb.yandexcloud.net` |
+| `LANDLY_DATABASE_POSTGRES_PORT` | PostgreSQL port | `6432` |
+| `LANDLY_DATABASE_POSTGRES_USER` | PostgreSQL user | `landly` |
+| `LANDLY_DATABASE_POSTGRES_PASSWORD` | PostgreSQL password | `your-db-password` |
+| `LANDLY_DATABASE_POSTGRES_DBNAME` | PostgreSQL database name | `landly` |
+| `LANDLY_DATABASE_POSTGRES_SSLMODE` | PostgreSQL SSL mode | `require` |
+| `LANDLY_STORAGE_S3_ENDPOINT` | S3 endpoint | `storage.yandexcloud.net` |
+| `LANDLY_STORAGE_S3_BUCKET` | S3 bucket name | `landly-sites` |
+| `LANDLY_STORAGE_S3_ACCESS_KEY` | S3 access key | `YCAJExxxxxxxx` |
+| `LANDLY_STORAGE_S3_SECRET_KEY` | S3 secret key | `YCPxxxxxxxx` |
+| `LANDLY_SERVER_CORS_ALLOWED_ORIGINS` | CORS allowed origins | `https://app.landly.ru` |
+
+### How Secrets are Used
+
+1. **Build job** — uses YC_* secrets to push image to Yandex Container Registry
+2. **Deploy job** — passes all LANDLY_* secrets as environment variables to Serverless Container revision via `--environment` flags
+3. **Smoke test** — calls STAGING_URL to verify deployment
+
+### Adding a New Secret
+
+1. Go to GitHub repo → Settings → Environments → staging
+2. Add the secret with exact name from table above
+3. Secrets are automatically picked up on next deploy
+
+### Manual Deploy
+
+If you need to trigger deploy manually:
+```bash
+gh workflow run backend-go.yml --ref main
+```
+
 ## Технологии
 
 **Backend:**
-- Go 1.22
+- Go 1.23
 - PostgreSQL
 - Redis
 - MinIO (S3)

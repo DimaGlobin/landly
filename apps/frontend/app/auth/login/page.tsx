@@ -29,7 +29,23 @@ export default function LoginPage() {
       await api.signIn(data.email, data.password)
       router.push('/app/projects')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка входа')
+      // Extract error message from different error formats
+      const message = 
+        err.response?.data?.error ||  // Backend error
+        err.response?.data?.message || // Alternative format
+        err.message ||                 // Axios/network error
+        'Ошибка входа'
+      
+      // Map common errors to user-friendly messages
+      const errorMap: Record<string, string> = {
+        'invalid credentials': 'Неверный email или пароль',
+        'user not found': 'Пользователь не найден',
+        'invalid password': 'Неверный пароль',
+        'internal server error': 'Ошибка сервера. Попробуйте позже.',
+        'Network Error': 'Нет соединения с сервером. Проверьте интернет.',
+      }
+      
+      setError(errorMap[message] || message)
     } finally {
       setIsLoading(false)
     }

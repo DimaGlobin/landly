@@ -32,7 +32,23 @@ export default function SignUpPage() {
       await api.signUp(data.email, data.password)
       router.push('/app/projects')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Ошибка регистрации')
+      // Extract error message from different error formats
+      const message = 
+        err.response?.data?.error ||  // Backend error
+        err.response?.data?.message || // Alternative format
+        err.message ||                 // Axios/network error
+        'Ошибка регистрации'
+      
+      // Map common errors to user-friendly messages
+      const errorMap: Record<string, string> = {
+        'user already exists': 'Пользователь с таким email уже существует',
+        'invalid email': 'Неверный формат email',
+        'password too short': 'Пароль слишком короткий',
+        'internal server error': 'Ошибка сервера. Попробуйте позже.',
+        'Network Error': 'Нет соединения с сервером. Проверьте интернет.',
+      }
+      
+      setError(errorMap[message] || message)
     } finally {
       setIsLoading(false)
     }

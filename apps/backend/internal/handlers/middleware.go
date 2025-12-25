@@ -103,10 +103,15 @@ func LoggerMiddleware(logger *zap.Logger) gin.HandlerFunc {
 	}
 }
 
-// CORSMiddleware настраивает CORS
+// CORSMiddleware configures CORS headers
 func CORSMiddleware(allowedOrigins, allowedMethods, allowedHeaders []string) gin.HandlerFunc {
+	// Check if wildcard is allowed
+	allowAll := false
 	originSet := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
+		if o == "*" {
+			allowAll = true
+		}
 		originSet[o] = struct{}{}
 	}
 
@@ -116,10 +121,13 @@ func CORSMiddleware(allowedOrigins, allowedMethods, allowedHeaders []string) gin
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 		if origin != "" {
-			if _, ok := originSet[origin]; ok {
+			if allowAll {
+				// Wildcard: reflect the requesting origin
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			} else if _, ok := originSet[origin]; ok {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 			}
-		} else if len(allowedOrigins) > 0 {
+		} else if len(allowedOrigins) > 0 && !allowAll {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigins[0])
 		}
 

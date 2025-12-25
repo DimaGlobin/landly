@@ -399,10 +399,22 @@ func validateConfig(cfg *Config) ([]string, error) {
 	if cfg.Database.Postgres.Host == "" {
 		missingEnvVars = append(missingEnvVars, "LANDLY_DATABASE_POSTGRES_HOST")
 	}
+	if cfg.Database.Postgres.Password == "" {
+		missingEnvVars = append(missingEnvVars, "LANDLY_DATABASE_POSTGRES_PASSWORD")
+	}
 
-	// S3 Bucket - required
+	// S3 - all required for publishing to work
 	if cfg.Storage.S3.Bucket == "" {
 		missingEnvVars = append(missingEnvVars, "LANDLY_STORAGE_S3_BUCKET")
+	}
+	if cfg.Storage.S3.Endpoint == "" {
+		missingEnvVars = append(missingEnvVars, "LANDLY_STORAGE_S3_ENDPOINT")
+	}
+	if cfg.Storage.S3.AccessKey == "" {
+		missingEnvVars = append(missingEnvVars, "LANDLY_STORAGE_S3_ACCESS_KEY")
+	}
+	if cfg.Storage.S3.SecretKey == "" {
+		missingEnvVars = append(missingEnvVars, "LANDLY_STORAGE_S3_SECRET_KEY")
 	}
 
 	return missingEnvVars, nil

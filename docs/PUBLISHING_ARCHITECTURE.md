@@ -161,12 +161,12 @@ app:
 
 storage:
   s3:
-    endpoint: "s3.amazonaws.com"
-    access_key: "${AWS_ACCESS_KEY_ID}"
-    secret_key: "${AWS_SECRET_ACCESS_KEY}"
-    bucket: "landly-sites-prod"
+    endpoint: "${LANDLY_STORAGE_S3_ENDPOINT}"           # e.g. storage.yandexcloud.net
+    access_key: "${LANDLY_STORAGE_S3_ACCESS_KEY}"
+    secret_key: "${LANDLY_STORAGE_S3_SECRET_KEY}"
+    bucket: "${LANDLY_STORAGE_S3_BUCKET}"               # e.g. landly-sites
     use_ssl: true
-    region: "us-east-1"
+    region: "ru-central1"
   
   cdn:
     base_url: "https://cdn.landly.com"

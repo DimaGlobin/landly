@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/landly/backend/internal/logger"
@@ -21,6 +24,7 @@ type Router struct {
 	allowedMethods        []string
 	allowedHeaders        []string
 	logger                *zap.Logger
+	db                    *sql.DB // For readiness checks
 }
 
 func NewRouter(
@@ -52,6 +56,12 @@ func NewRouter(
 	}
 }
 
+// SetDB sets the database connection for readiness checks.
+// Must be called before Setup() for readiness endpoint to work properly.
+func (r *Router) SetDB(db *sql.DB) {
+	r.db = db
+}
+
 func (r *Router) Setup() *gin.Engine {
 	// Middleware
 	r.engine.Use(CORSMiddleware(r.allowedOrigins, r.allowedMethods, r.allowedHeaders))
@@ -73,7 +83,7 @@ func (r *Router) Setup() *gin.Engine {
 	// API v1
 	v1 := r.engine.Group("/v1")
 	{
-		// Auth (публичные)
+		// Auth (public)
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/signup", r.authHandler.SignUp)
@@ -81,7 +91,7 @@ func (r *Router) Setup() *gin.Engine {
 			auth.POST("/refresh", r.authHandler.RefreshToken)
 		}
 
-		// Projects (требуют авторизацию)
+		// Projects (require auth)
 		projects := v1.Group("/projects")
 		projects.Use(AuthMiddleware(r.jwtSecret))
 		{
@@ -107,10 +117,10 @@ func (r *Router) Setup() *gin.Engine {
 		// Analytics
 		analytics := v1.Group("/analytics")
 		{
-			// Публичный эндпойнт для трекинга (с опубликованных сайтов)
+			// Public endpoint for tracking (from published sites)
 			analytics.POST("/:id/event", r.analyticsHandler.TrackEvent)
 
-			// Приватный эндпойнт для получения статистики
+			// Private endpoint for stats
 			analytics.GET("/:id/stats", AuthMiddleware(r.jwtSecret), r.analyticsHandler.GetStats)
 		}
 	}
@@ -124,8 +134,31 @@ func (r *Router) healthCheck(c *gin.Context) {
 	})
 }
 
+// readinessCheck verifies the service is ready to handle traffic.
+// Returns 200 if DB is reachable, 503 otherwise.
 func (r *Router) readinessCheck(c *gin.Context) {
-	// TODO: проверить подключение к БД, Redis и т.д.
+	// If no DB connection provided, return degraded status
+	if r.db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not ready",
+			"reason": "database connection not configured",
+		})
+		return
+	}
+
+	// Ping database with timeout
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+
+	if err := r.db.PingContext(ctx); err != nil {
+		r.logger.Warn("readiness check failed: database ping error", zap.Error(err))
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not ready",
+			"reason": "database unreachable",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ready",
 	})
