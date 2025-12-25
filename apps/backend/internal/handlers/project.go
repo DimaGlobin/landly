@@ -78,13 +78,13 @@ func (h *ProjectHandler) getPublishInfo(ctx context.Context, projectID uuid.UUID
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	var req dto.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
@@ -93,7 +93,11 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		Niche: req.Niche,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if domainErr, ok := err.(*domain.Error); ok {
+			RespondError(c, domainErr)
+			return
+		}
+		RespondInternalError(c)
 		return
 	}
 
@@ -118,14 +122,18 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 func (h *ProjectHandler) GetProjects(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	ctx := c.Request.Context()
 	projects, err := h.projectService.ListProjects(ctx, userID.String())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if domainErr, ok := err.(*domain.Error); ok {
+			RespondError(c, domainErr)
+			return
+		}
+		RespondInternalError(c)
 		return
 	}
 
@@ -160,20 +168,20 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 func (h *ProjectHandler) GetProject(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	ctx := c.Request.Context()
 	project, err := h.projectService.GetProject(ctx, userID.String(), projectID.String())
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+		RespondError(c, domain.ErrProjectNotFound)
 		return
 	}
 
@@ -199,18 +207,22 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	if err := h.projectService.DeleteProject(c.Request.Context(), userID.String(), projectID.String()); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if domainErr, ok := err.(*domain.Error); ok {
+			RespondError(c, domainErr)
+			return
+		}
+		RespondInternalError(c)
 		return
 	}
 

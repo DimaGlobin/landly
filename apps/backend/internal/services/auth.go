@@ -84,7 +84,7 @@ func (s *AuthService) SignUp(ctx context.Context, email, password string) (*Auth
 	// Проверяем, существует ли пользователь
 	_, err := s.userRepo.GetByEmail(ctx, email)
 	if err == nil {
-		return nil, domain.ErrConflict.WithMessage("пользователь уже существует")
+		return nil, domain.ErrUserAlreadyExists
 	}
 
 	// Хешируем пароль
@@ -115,12 +115,12 @@ func (s *AuthService) SignIn(ctx context.Context, email, password string) (*Auth
 	// Получаем пользователя
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		return nil, domain.ErrUnauthorized.WithMessage("invalid credentials")
+		return nil, domain.ErrInvalidCredentials
 	}
 
 	// Проверяем пароль
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return nil, domain.ErrUnauthorized.WithMessage("invalid credentials")
+		return nil, domain.ErrInvalidCredentials
 	}
 
 	// Генерируем токены

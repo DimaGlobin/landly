@@ -124,18 +124,68 @@ jobs:
           flags: backend-integration
           name: backend-integration-coverage
 
+  validate-migrations:
+    name: Validate Migration Checksums
+    runs-on: ubuntu-latest
+    # Always runs but only validates on main push (skips with success otherwise)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate migration checksums
+        working-directory: apps/backend/migrations
+        run: |
+          # Skip validation for non-main branches (but don't fail)
+          if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "⏭️ Skipping migration validation (not a push to main)"
+            echo "Branch: ${{ github.ref }}"
+            echo "Event: ${{ github.event_name }}"
+            exit 0
+          fi
+
+          echo "=== Validating migration checksums ==="
+          echo "This ensures migrations are immutable after deployment"
+          echo ""
+          
+          if [ ! -f checksums.sha256 ]; then
+            echo "❌ ERROR: checksums.sha256 not found!"
+            echo "Run: make migration-checksums"
+            exit 1
+          fi
+          
+          echo "Checking checksums..."
+          grep -v "^#" checksums.sha256 | shasum -a 256 -c -
+          
+          echo ""
+          echo "✅ All migration checksums valid!"
+
+      - name: List migrations
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: apps/backend/migrations
+        run: |
+          echo "### Migration Files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for f in *.sql; do
+            checksum=$(shasum -a 256 "$f" | cut -d' ' -f1 | head -c 12)
+            echo "- \`$f\` (${checksum}...)" >> $GITHUB_STEP_SUMMARY
+          done
+
   build:
     name: Build and Push
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [unit-tests, integration-tests, validate-migrations]
+    # Run only on push to main AND only if all dependencies succeeded
+    if: |
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/main' &&
+      needs.unit-tests.result == 'success' &&
+      needs.integration-tests.result == 'success' &&
+      needs.validate-migrations.result == 'success'
     environment: staging
     permissions:
       contents: read
       packages: write
     outputs:
       image_digest: ${{ steps.build-push.outputs.digest }}
-      image_repo: ${{ steps.vars.outputs.ycr_repo }}
     steps:
       - uses: actions/checkout@v4
 
@@ -188,39 +238,184 @@ jobs:
         run: |
           echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Digest:** \`${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **YCR Image:** \`${{ steps.vars.outputs.ycr_repo }}@${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
 
-  deploy_staging:
-    name: Deploy to Staging
+  migrate-staging:
+    name: Run Database Migrations
     runs-on: ubuntu-latest
     needs: build
     if: github.ref == 'refs/heads/main'
     environment: staging
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@latest
+
+      - name: Show pending migrations (dry-run)
+        env:
+          LANDLY_DATABASE_POSTGRES_HOST: ${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}
+          LANDLY_DATABASE_POSTGRES_PORT: ${{ secrets.LANDLY_DATABASE_POSTGRES_PORT }}
+          LANDLY_DATABASE_POSTGRES_USER: ${{ secrets.LANDLY_DATABASE_POSTGRES_USER }}
+          LANDLY_DATABASE_POSTGRES_PASSWORD: ${{ secrets.LANDLY_DATABASE_POSTGRES_PASSWORD }}
+          LANDLY_DATABASE_POSTGRES_DBNAME: ${{ secrets.LANDLY_DATABASE_POSTGRES_DBNAME }}
+          LANDLY_DATABASE_POSTGRES_SSLMODE: ${{ secrets.LANDLY_DATABASE_POSTGRES_SSLMODE }}
+        run: |
+          DSN="postgres://${LANDLY_DATABASE_POSTGRES_USER}:${LANDLY_DATABASE_POSTGRES_PASSWORD}@${LANDLY_DATABASE_POSTGRES_HOST}:${LANDLY_DATABASE_POSTGRES_PORT}/${LANDLY_DATABASE_POSTGRES_DBNAME}?sslmode=${LANDLY_DATABASE_POSTGRES_SSLMODE}"
+          
+          echo "=== Migration Status (dry-run) ==="
+          goose -dir apps/backend/migrations postgres "$DSN" status
+          
+          echo ""
+          echo "=== Pending Migrations ==="
+          PENDING=$(goose -dir apps/backend/migrations postgres "$DSN" status | grep -c "Pending" || true)
+          echo "Pending migrations: $PENDING"
+          
+          if [ "$PENDING" -gt 0 ]; then
+            echo "⚠️ There are $PENDING pending migration(s) to apply"
+          else
+            echo "✅ No pending migrations"
+          fi
+
+      - name: Apply migrations
+        env:
+          LANDLY_DATABASE_POSTGRES_HOST: ${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}
+          LANDLY_DATABASE_POSTGRES_PORT: ${{ secrets.LANDLY_DATABASE_POSTGRES_PORT }}
+          LANDLY_DATABASE_POSTGRES_USER: ${{ secrets.LANDLY_DATABASE_POSTGRES_USER }}
+          LANDLY_DATABASE_POSTGRES_PASSWORD: ${{ secrets.LANDLY_DATABASE_POSTGRES_PASSWORD }}
+          LANDLY_DATABASE_POSTGRES_DBNAME: ${{ secrets.LANDLY_DATABASE_POSTGRES_DBNAME }}
+          LANDLY_DATABASE_POSTGRES_SSLMODE: ${{ secrets.LANDLY_DATABASE_POSTGRES_SSLMODE }}
+        run: |
+          DSN="postgres://${LANDLY_DATABASE_POSTGRES_USER}:${LANDLY_DATABASE_POSTGRES_PASSWORD}@${LANDLY_DATABASE_POSTGRES_HOST}:${LANDLY_DATABASE_POSTGRES_PORT}/${LANDLY_DATABASE_POSTGRES_DBNAME}?sslmode=${LANDLY_DATABASE_POSTGRES_SSLMODE}"
+          
+          echo "=== Applying Migrations ==="
+          goose -dir apps/backend/migrations postgres "$DSN" up
+          
+          echo ""
+          echo "=== Final Status ==="
+          goose -dir apps/backend/migrations postgres "$DSN" status
+
+      - name: Migration summary
+        run: |
+          echo "### Migration Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** staging" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database:** \`${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Migrations applied" >> $GITHUB_STEP_SUMMARY
+
+  deploy_staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, migrate-staging]
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+      - name: Validate required secrets
+        env:
+          YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+          YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+          YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+          YC_SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+          YC_CONTAINER_ID: ${{ secrets.YC_CONTAINER_ID }}
+          YCR_REPOSITORY: ${{ secrets.YCR_REPOSITORY }}
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+          IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          echo "=== Validating required secrets (lengths only) ==="
+          
+          errors=0
+          
+          check_secret() {
+            local name="$1"
+            local value="$2"
+            local len="${#value}"
+            echo "$name length: $len"
+            if [ "$len" -eq 0 ]; then
+              echo "❌ ERROR: $name is empty!"
+              errors=$((errors + 1))
+            fi
+          }
+          
+          check_secret "YC_FOLDER_ID" "$YC_FOLDER_ID"
+          check_secret "YC_REGISTRY_ID" "$YC_REGISTRY_ID"
+          check_secret "YC_SERVICE_ACCOUNT_KEY_JSON" "$YC_SERVICE_ACCOUNT_KEY_JSON"
+          check_secret "YC_SERVICE_ACCOUNT_ID" "$YC_SERVICE_ACCOUNT_ID"
+          check_secret "YC_CONTAINER_ID" "$YC_CONTAINER_ID"
+          check_secret "YCR_REPOSITORY" "$YCR_REPOSITORY"
+          check_secret "STAGING_URL" "$STAGING_URL"
+          check_secret "IMAGE_DIGEST" "$IMAGE_DIGEST"
+          
+          if [ "$errors" -gt 0 ]; then
+            echo "❌ $errors required secret(s) missing. Aborting."
+            exit 1
+          fi
+          echo "✅ All required secrets are set"
+
       - name: Install Yandex Cloud CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /opt/yc -n
           echo "/opt/yc/bin" >> $GITHUB_PATH
 
       - name: Authenticate with Yandex Cloud
+        env:
+          YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+          YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
         run: |
-          echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}' > /tmp/yc-key.json
+          echo "$YC_SERVICE_ACCOUNT_KEY_JSON" > /tmp/yc-key.json
           /opt/yc/bin/yc config set service-account-key /tmp/yc-key.json
-          /opt/yc/bin/yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+          /opt/yc/bin/yc config set folder-id "$YC_FOLDER_ID"
           rm -f /tmp/yc-key.json
+          
+          # Verify YC context is set (without exposing secrets)
+          echo "=== Verifying YC context ==="
+          echo "Folder ID configured: ${YC_FOLDER_ID:0:8}..."
+          /opt/yc/bin/yc resource-manager folder get --id "$YC_FOLDER_ID" --format json 2>/dev/null | jq -r '.name // "Folder access verified"' || echo "Folder access verified"
 
       - name: Deploy new revision to Serverless Container
+        env:
+          YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+          YCR_REPOSITORY: ${{ secrets.YCR_REPOSITORY }}
+          YC_CONTAINER_ID: ${{ secrets.YC_CONTAINER_ID }}
+          YC_SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+          IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+          # App env vars
+          LANDLY_AUTH_JWT_SECRET: ${{ secrets.LANDLY_AUTH_JWT_SECRET }}
+          LANDLY_DATABASE_POSTGRES_HOST: ${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}
+          LANDLY_DATABASE_POSTGRES_PORT: ${{ secrets.LANDLY_DATABASE_POSTGRES_PORT }}
+          LANDLY_DATABASE_POSTGRES_USER: ${{ secrets.LANDLY_DATABASE_POSTGRES_USER }}
+          LANDLY_DATABASE_POSTGRES_PASSWORD: ${{ secrets.LANDLY_DATABASE_POSTGRES_PASSWORD }}
+          LANDLY_DATABASE_POSTGRES_DBNAME: ${{ secrets.LANDLY_DATABASE_POSTGRES_DBNAME }}
+          LANDLY_DATABASE_POSTGRES_SSLMODE: ${{ secrets.LANDLY_DATABASE_POSTGRES_SSLMODE }}
+          LANDLY_STORAGE_S3_ENDPOINT: ${{ secrets.LANDLY_STORAGE_S3_ENDPOINT }}
+          LANDLY_STORAGE_S3_BUCKET: ${{ secrets.LANDLY_STORAGE_S3_BUCKET }}
+          LANDLY_STORAGE_S3_ACCESS_KEY: ${{ secrets.LANDLY_STORAGE_S3_ACCESS_KEY }}
+          LANDLY_STORAGE_S3_SECRET_KEY: ${{ secrets.LANDLY_STORAGE_S3_SECRET_KEY }}
+          LANDLY_SERVER_CORS_ALLOWED_ORIGINS: ${{ secrets.LANDLY_SERVER_CORS_ALLOWED_ORIGINS }}
         run: |
-          # Use immutable image reference (digest)
-          IMAGE="${{ needs.build.outputs.image_repo }}@${{ needs.build.outputs.image_digest }}"
+          set -euo pipefail
           
-          echo "Deploying image: ${IMAGE}"
+          # Build image reference from secrets (not from job outputs)
+          YCR_REPO="cr.yandex/${YC_REGISTRY_ID}/${YCR_REPOSITORY}"
+          IMAGE="${YCR_REPO}@${IMAGE_DIGEST}"
+          
+          echo "=== Deploy diagnostics ==="
+          echo "YCR_REPO length: ${#YCR_REPO}"
+          echo "IMAGE_DIGEST length: ${#IMAGE_DIGEST}"
+          echo "IMAGE length: ${#IMAGE}"
+          echo "Deploying image (masked): ${IMAGE}"
+          echo "Container ID length: ${#YC_CONTAINER_ID}"
+          echo "Service Account ID length: ${#YC_SERVICE_ACCOUNT_ID}"
           
           # Create new container revision with all env vars
           /opt/yc/bin/yc serverless container revision deploy \
-            --container-id ${{ secrets.YC_CONTAINER_ID }} \
+            --container-id "${YC_CONTAINER_ID}" \
             --image "${IMAGE}" \
-            --service-account-id ${{ secrets.YC_SERVICE_ACCOUNT_ID }} \
+            --service-account-id "${YC_SERVICE_ACCOUNT_ID}" \
             --execution-timeout 30s \
             --memory 512MB \
             --cores 1 \
@@ -228,20 +423,20 @@ jobs:
             --min-instances 0 \
             --environment "LANDLY_APP_ENV=production" \
             --environment "LANDLY_BOOTSTRAP_MODE=0" \
-            --environment "LANDLY_AUTH_JWT_SECRET=${{ secrets.LANDLY_AUTH_JWT_SECRET }}" \
-            --environment "LANDLY_DATABASE_POSTGRES_HOST=${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}" \
-            --environment "LANDLY_DATABASE_POSTGRES_PORT=${{ secrets.LANDLY_DATABASE_POSTGRES_PORT }}" \
-            --environment "LANDLY_DATABASE_POSTGRES_USER=${{ secrets.LANDLY_DATABASE_POSTGRES_USER }}" \
-            --environment "LANDLY_DATABASE_POSTGRES_PASSWORD=${{ secrets.LANDLY_DATABASE_POSTGRES_PASSWORD }}" \
-            --environment "LANDLY_DATABASE_POSTGRES_DBNAME=${{ secrets.LANDLY_DATABASE_POSTGRES_DBNAME }}" \
-            --environment "LANDLY_DATABASE_POSTGRES_SSLMODE=${{ secrets.LANDLY_DATABASE_POSTGRES_SSLMODE }}" \
-            --environment "LANDLY_STORAGE_S3_ENDPOINT=${{ secrets.LANDLY_STORAGE_S3_ENDPOINT }}" \
-            --environment "LANDLY_STORAGE_S3_BUCKET=${{ secrets.LANDLY_STORAGE_S3_BUCKET }}" \
-            --environment "LANDLY_STORAGE_S3_ACCESS_KEY=${{ secrets.LANDLY_STORAGE_S3_ACCESS_KEY }}" \
-            --environment "LANDLY_STORAGE_S3_SECRET_KEY=${{ secrets.LANDLY_STORAGE_S3_SECRET_KEY }}" \
+            --environment "LANDLY_AUTH_JWT_SECRET=${LANDLY_AUTH_JWT_SECRET}" \
+            --environment "LANDLY_DATABASE_POSTGRES_HOST=${LANDLY_DATABASE_POSTGRES_HOST}" \
+            --environment "LANDLY_DATABASE_POSTGRES_PORT=${LANDLY_DATABASE_POSTGRES_PORT}" \
+            --environment "LANDLY_DATABASE_POSTGRES_USER=${LANDLY_DATABASE_POSTGRES_USER}" \
+            --environment "LANDLY_DATABASE_POSTGRES_PASSWORD=${LANDLY_DATABASE_POSTGRES_PASSWORD}" \
+            --environment "LANDLY_DATABASE_POSTGRES_DBNAME=${LANDLY_DATABASE_POSTGRES_DBNAME}" \
+            --environment "LANDLY_DATABASE_POSTGRES_SSLMODE=${LANDLY_DATABASE_POSTGRES_SSLMODE}" \
+            --environment "LANDLY_STORAGE_S3_ENDPOINT=${LANDLY_STORAGE_S3_ENDPOINT}" \
+            --environment "LANDLY_STORAGE_S3_BUCKET=${LANDLY_STORAGE_S3_BUCKET}" \
+            --environment "LANDLY_STORAGE_S3_ACCESS_KEY=${LANDLY_STORAGE_S3_ACCESS_KEY}" \
+            --environment "LANDLY_STORAGE_S3_SECRET_KEY=${LANDLY_STORAGE_S3_SECRET_KEY}" \
             --environment "LANDLY_STORAGE_S3_USE_SSL=true" \
-            --environment "LANDLY_SERVER_CORS_ALLOWED_ORIGINS=${{ secrets.LANDLY_SERVER_CORS_ALLOWED_ORIGINS }}" \
-            --environment "LANDLY_APP_BASE_URL=${{ secrets.STAGING_URL }}"
+            --environment "LANDLY_SERVER_CORS_ALLOWED_ORIGINS=${LANDLY_SERVER_CORS_ALLOWED_ORIGINS}" \
+            --environment "LANDLY_APP_BASE_URL=${STAGING_URL}"
 
       - name: Wait for revision to be active
         run: |

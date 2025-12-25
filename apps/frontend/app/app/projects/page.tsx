@@ -147,34 +147,32 @@ export default function ProjectsPage() {
 
   return (
     <div className="app-shell">
-      <div className="relative z-10 mx-auto max-w-7xl px-6 py-10 space-y-8">
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="glass-panel px-6 py-5 md:px-8 md:py-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-blue-600/80">Landly Workspace</p>
-                <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
-                  Мои проекты
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                  Управляйте проектами, запускайте генерацию лендингов в чате и публикуйте результат в один клик.
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  onClick={handleLogout}
-                  className="h-10 rounded-full border border-white/50 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white"
-                >
-                  Выйти
-                </Button>
-                <Button
-                  onClick={() => setShowCreateForm(true)}
-                  className="h-10 rounded-full bg-blue-600 px-6 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-700"
-                >
-                  + Новый проект
-                </Button>
-              </div>
+      <div className="relative z-10 mx-auto max-w-5xl px-6 py-10 space-y-8">
+        <div className="glass-panel px-6 py-5 md:px-8 md:py-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-blue-600/80">Landly Workspace</p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
+                Мои проекты
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-600">
+                Управляйте проектами, запускайте генерацию лендингов в чате и публикуйте результат в один клик.
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <Button
+                variant="ghost"
+                onClick={handleLogout}
+                className="h-10 whitespace-nowrap rounded-full border border-white/50 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white"
+              >
+                Выйти
+              </Button>
+              <Button
+                onClick={() => setShowCreateForm(true)}
+                className="h-10 whitespace-nowrap rounded-full bg-blue-600 px-6 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-700"
+              >
+                + Новый проект
+              </Button>
             </div>
           </div>
         </div>
@@ -234,7 +232,7 @@ export default function ProjectsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2">
             {projects.map((project) => (
               <Card
                 key={project.id}

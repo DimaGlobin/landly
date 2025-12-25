@@ -88,7 +88,12 @@ func TestAuthService_Integration_InvalidCredentials(t *testing.T) {
 	// Try to sign in with wrong password
 	_, err = authService.SignIn(ctx, email, "WrongPassword123!")
 	assert.Error(t, err, "Wrong password should fail")
-	assert.Contains(t, err.Error(), "invalid credentials", "Error should mention invalid credentials")
+	var domainErr2 *domain.Error
+	if errors.As(err, &domainErr2) {
+		assert.Equal(t, "INVALID_CREDENTIALS", domainErr2.Code, "Error should be INVALID_CREDENTIALS")
+	} else {
+		assert.Contains(t, err.Error(), "INVALID_CREDENTIALS", "Error should mention invalid credentials")
+	}
 
 	// Try to sign in with non-existent email
 	_, err = authService.SignIn(ctx, "nonexistent@example.com", password)

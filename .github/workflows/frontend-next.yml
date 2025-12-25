@@ -56,14 +56,17 @@ jobs:
     name: Build and Push
     runs-on: ubuntu-latest
     needs: [unit-tests]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Run only on push to main AND only if tests succeeded
+    if: |
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/main' &&
+      needs.unit-tests.result == 'success'
     environment: staging
     permissions:
       contents: read
       packages: write
     outputs:
       image_digest: ${{ steps.build-push.outputs.digest }}
-      image_repo: ${{ steps.vars.outputs.ycr_repo }}
     steps:
       - uses: actions/checkout@v4
 
@@ -118,7 +121,6 @@ jobs:
         run: |
           echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Digest:** \`${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **YCR Image:** \`${{ steps.vars.outputs.ycr_repo }}@${{ steps.build-push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
 
   deploy_staging:
     name: Deploy to Staging
@@ -127,30 +129,95 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: staging
     steps:
+      - name: Validate required secrets
+        env:
+          YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+          YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+          YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+          YC_SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+          YC_FRONTEND_CONTAINER_ID: ${{ secrets.YC_FRONTEND_CONTAINER_ID }}
+          YCR_FRONTEND_REPOSITORY: ${{ secrets.YCR_FRONTEND_REPOSITORY }}
+          STAGING_FRONTEND_URL: ${{ secrets.STAGING_FRONTEND_URL }}
+          IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          echo "=== Validating required secrets (lengths only) ==="
+          
+          errors=0
+          
+          check_secret() {
+            local name="$1"
+            local value="$2"
+            local len="${#value}"
+            echo "$name length: $len"
+            if [ "$len" -eq 0 ]; then
+              echo "❌ ERROR: $name is empty!"
+              errors=$((errors + 1))
+            fi
+          }
+          
+          check_secret "YC_FOLDER_ID" "$YC_FOLDER_ID"
+          check_secret "YC_REGISTRY_ID" "$YC_REGISTRY_ID"
+          check_secret "YC_SERVICE_ACCOUNT_KEY_JSON" "$YC_SERVICE_ACCOUNT_KEY_JSON"
+          check_secret "YC_SERVICE_ACCOUNT_ID" "$YC_SERVICE_ACCOUNT_ID"
+          check_secret "YC_FRONTEND_CONTAINER_ID" "$YC_FRONTEND_CONTAINER_ID"
+          check_secret "YCR_FRONTEND_REPOSITORY" "$YCR_FRONTEND_REPOSITORY"
+          check_secret "STAGING_FRONTEND_URL" "$STAGING_FRONTEND_URL"
+          check_secret "IMAGE_DIGEST" "$IMAGE_DIGEST"
+          
+          if [ "$errors" -gt 0 ]; then
+            echo "❌ $errors required secret(s) missing. Aborting."
+            exit 1
+          fi
+          echo "✅ All required secrets are set"
+
       - name: Install Yandex Cloud CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /opt/yc -n
           echo "/opt/yc/bin" >> $GITHUB_PATH
 
       - name: Authenticate with Yandex Cloud
+        env:
+          YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+          YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
         run: |
-          echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}' > /tmp/yc-key.json
+          echo "$YC_SERVICE_ACCOUNT_KEY_JSON" > /tmp/yc-key.json
           /opt/yc/bin/yc config set service-account-key /tmp/yc-key.json
-          /opt/yc/bin/yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+          /opt/yc/bin/yc config set folder-id "$YC_FOLDER_ID"
           rm -f /tmp/yc-key.json
+          
+          # Verify YC context is set (without exposing secrets)
+          echo "=== Verifying YC context ==="
+          echo "Folder ID configured: ${YC_FOLDER_ID:0:8}..."
+          /opt/yc/bin/yc resource-manager folder get --id "$YC_FOLDER_ID" --format json 2>/dev/null | jq -r '.name // "Folder access verified"' || echo "Folder access verified"
 
       - name: Deploy new revision to Serverless Container
+        env:
+          YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+          YCR_FRONTEND_REPOSITORY: ${{ secrets.YCR_FRONTEND_REPOSITORY }}
+          YC_FRONTEND_CONTAINER_ID: ${{ secrets.YC_FRONTEND_CONTAINER_ID }}
+          YC_SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+          IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
         run: |
-          # Use immutable image reference (digest)
-          IMAGE="${{ needs.build.outputs.image_repo }}@${{ needs.build.outputs.image_digest }}"
+          set -euo pipefail
           
-          echo "Deploying image: ${IMAGE}"
+          # Build image reference from secrets (not from job outputs)
+          YCR_REPO="cr.yandex/${YC_REGISTRY_ID}/${YCR_FRONTEND_REPOSITORY}"
+          IMAGE="${YCR_REPO}@${IMAGE_DIGEST}"
+          
+          echo "=== Deploy diagnostics ==="
+          echo "YCR_REPO length: ${#YCR_REPO}"
+          echo "IMAGE_DIGEST length: ${#IMAGE_DIGEST}"
+          echo "IMAGE length: ${#IMAGE}"
+          echo "Deploying image (masked): ${IMAGE}"
+          echo "Container ID length: ${#YC_FRONTEND_CONTAINER_ID}"
+          echo "Service Account ID length: ${#YC_SERVICE_ACCOUNT_ID}"
           
           # Create new container revision
           /opt/yc/bin/yc serverless container revision deploy \
-            --container-id ${{ secrets.YC_FRONTEND_CONTAINER_ID }} \
+            --container-id "${YC_FRONTEND_CONTAINER_ID}" \
             --image "${IMAGE}" \
-            --service-account-id ${{ secrets.YC_SERVICE_ACCOUNT_ID }} \
+            --service-account-id "${YC_SERVICE_ACCOUNT_ID}" \
             --execution-timeout 30s \
             --memory 512MB \
             --cores 1 \

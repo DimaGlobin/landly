@@ -61,19 +61,19 @@ func NewGenerateHandler(generateService GenerateService, publishService PublishS
 func (h *GenerateHandler) Generate(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	var req dto.GenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
@@ -82,7 +82,11 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 		PaymentURL: req.PaymentURL,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if domainErr, ok := err.(*domain.Error); ok {
+			RespondError(c, domainErr)
+			return
+		}
+		RespondInternalError(c)
 		return
 	}
 
@@ -105,19 +109,19 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 func (h *GenerateHandler) GetPreview(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	preview, err := h.generateService.GetPreview(c.Request.Context(), userID, projectID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		RespondError(c, domain.ErrProjectNotFound)
 		return
 	}
 
@@ -135,13 +139,13 @@ func (h *GenerateHandler) GetPreview(c *gin.Context) {
 func (h *GenerateHandler) GetChat(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
@@ -169,19 +173,19 @@ func (h *GenerateHandler) GetChat(c *gin.Context) {
 func (h *GenerateHandler) SendChat(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	var req dto.ChatMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
@@ -207,13 +211,13 @@ func (h *GenerateHandler) SendChat(c *gin.Context) {
 func (h *GenerateHandler) Publish(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
@@ -222,7 +226,11 @@ func (h *GenerateHandler) Publish(c *gin.Context) {
 		Path:   "",
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if domainErr, ok := err.(*domain.Error); ok {
+			RespondError(c, domainErr)
+			return
+		}
+		RespondInternalError(c)
 		return
 	}
 
@@ -255,18 +263,22 @@ func (h *GenerateHandler) Publish(c *gin.Context) {
 func (h *GenerateHandler) Unpublish(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	if err := h.publishService.UnpublishProject(c.Request.Context(), userID, projectID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if domainErr, ok := err.(*domain.Error); ok {
+			RespondError(c, domainErr)
+			return
+		}
+		RespondInternalError(c)
 		return
 	}
 
@@ -289,7 +301,9 @@ func (h *GenerateHandler) ServePublished(c *gin.Context) {
 			c.String(domainErr.HTTPStatus(), domainErr.Message)
 			return
 		}
-		c.String(http.StatusInternalServerError, err.Error())
+		// Don't expose internal error details
+		logger.WithContext(c.Request.Context()).Error("failed to serve published asset", zap.Error(err))
+		c.String(http.StatusInternalServerError, "Internal server error")
 		return
 	}
 	defer reader.Close()
@@ -318,7 +332,9 @@ func (h *GenerateHandler) ServePublishedLegacy(c *gin.Context) {
 			c.String(domainErr.HTTPStatus(), domainErr.Message)
 			return
 		}
-		c.String(http.StatusInternalServerError, err.Error())
+		// Don't expose internal error details
+		logger.WithContext(c.Request.Context()).Error("failed to serve legacy published asset", zap.Error(err))
+		c.String(http.StatusInternalServerError, "Internal server error")
 		return
 	}
 	defer reader.Close()
@@ -353,9 +369,9 @@ func respondWithDomainError(c *gin.Context, err error) bool {
 	}
 
 	if domainErr, ok := err.(*domain.Error); ok {
-		c.JSON(domainErr.HTTPStatus(), gin.H{"error": domainErr.Message})
+		RespondError(c, domainErr)
 	} else {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondInternalError(c)
 	}
 
 	return true

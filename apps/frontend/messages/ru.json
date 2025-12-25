@@ -1,0 +1,72 @@
+{
+  "errors": {
+    "UNAUTHORIZED": "Требуется авторизация",
+    "INVALID_TOKEN": "Сессия истекла, войдите снова",
+    "TOKEN_EXPIRED": "Сессия истекла, войдите снова",
+    "INVALID_CREDENTIALS": "Неверный email или пароль",
+    "USER_ALREADY_EXISTS": "Пользователь с таким email уже существует",
+    "USER_NOT_FOUND": "Пользователь не найден",
+    "FORBIDDEN": "Доступ запрещён",
+    "NOT_FOUND": "Ресурс не найден",
+    "PROJECT_NOT_FOUND": "Проект не найден",
+    "ALREADY_EXISTS": "Ресурс уже существует",
+    "VALIDATION_ERROR": "Ошибка валидации данных",
+    "INVALID_INPUT": "Некорректные данные",
+    "BAD_REQUEST": "Некорректный запрос",
+    "GENERATION_FAILED": "Не удалось сгенерировать лендинг. Попробуйте ещё раз",
+    "RENDER_FAILED": "Ошибка рендеринга страницы",
+    "PUBLISH_FAILED": "Не удалось опубликовать сайт",
+    "INTERNAL_ERROR": "Что-то пошло не так. Попробуйте позже",
+    "NETWORK_ERROR": "Нет соединения с сервером",
+    "UNKNOWN": "Произошла неизвестная ошибка"
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "delete": "Удалить",
+    "edit": "Редактировать",
+    "create": "Создать",
+    "back": "Назад",
+    "next": "Далее",
+    "confirm": "Подтвердить",
+    "close": "Закрыть",
+    "retry": "Повторить"
+  },
+  "auth": {
+    "signIn": "Вход",
+    "signUp": "Регистрация",
+    "signOut": "Выход",
+    "email": "Email",
+    "password": "Пароль",
+    "confirmPassword": "Подтвердите пароль",
+    "forgotPassword": "Забыли пароль?",
+    "noAccount": "Нет аккаунта?",
+    "hasAccount": "Уже есть аккаунт?",
+    "signInButton": "Войти",
+    "signUpButton": "Зарегистрироваться"
+  },
+  "projects": {
+    "title": "Мои проекты",
+    "createNew": "Создать проект",
+    "noProjects": "У вас пока нет проектов",
+    "delete": "Удалить проект",
+    "deleteConfirm": "Вы уверены, что хотите удалить проект?",
+    "published": "Опубликован",
+    "draft": "Черновик"
+  },
+  "editor": {
+    "preview": "Предпросмотр",
+    "publish": "Опубликовать",
+    "unpublish": "Снять с публикации",
+    "generating": "AI думает...",
+    "sendPrompt": "Отправить",
+    "promptPlaceholder": "Опишите, что нужно изменить...",
+    "history": "История",
+    "revert": "Откатить",
+    "reverted": "Откачено к версии",
+    "noChanges": "Нет изменений",
+    "changesApplied": "Изменения применены"
+  }
+}
+

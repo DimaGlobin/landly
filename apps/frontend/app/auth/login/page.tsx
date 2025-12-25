@@ -6,10 +6,11 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { ArrowRight, Sparkles } from 'lucide-react'
 
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ErrorMessage } from '@/components/error-message'
 
 interface FormData {
   email: string
@@ -18,34 +19,22 @@ interface FormData {
 
 export default function LoginPage() {
   const router = useRouter()
-  const [error, setError] = useState<string>('')
+  const [error, setError] = useState<ApiError | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>()
 
   const onSubmit = async (data: FormData) => {
     try {
-      setError('')
+      setError(null)
       setIsLoading(true)
       await api.signIn(data.email, data.password)
       router.push('/app/projects')
-    } catch (err: any) {
-      // Extract error message from different error formats
-      const message = 
-        err.response?.data?.error ||  // Backend error
-        err.response?.data?.message || // Alternative format
-        err.message ||                 // Axios/network error
-        'Ошибка входа'
-      
-      // Map common errors to user-friendly messages
-      const errorMap: Record<string, string> = {
-        'invalid credentials': 'Неверный email или пароль',
-        'user not found': 'Пользователь не найден',
-        'invalid password': 'Неверный пароль',
-        'internal server error': 'Ошибка сервера. Попробуйте позже.',
-        'Network Error': 'Нет соединения с сервером. Проверьте интернет.',
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err)
+      } else {
+        setError(new ApiError('UNKNOWN', 'Ошибка входа'))
       }
-      
-      setError(errorMap[message] || message)
     } finally {
       setIsLoading(false)
     }
@@ -80,11 +69,7 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-              {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                  {error}
-                </div>
-              )}
+              <ErrorMessage error={error} onDismiss={() => setError(null)} />
 
               <div className="space-y-2">
                 <label htmlFor="email" className="text-sm font-medium text-slate-700">
@@ -134,4 +119,3 @@ export default function LoginPage() {
     </div>
   )
 }
-

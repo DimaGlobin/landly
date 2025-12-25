@@ -13,62 +13,75 @@ import (
 )
 
 // AuthMiddleware проверяет JWT токен
+// NOTE: Using X-Landly-Authorization instead of Authorization
+// because Yandex Serverless Containers intercept Authorization header
+// and return 403 before request reaches our backend
 func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header"})
-			c.Abort()
-			return
+	// Try custom header first (for Yandex Serverless compatibility)
+	authHeader := c.GetHeader("X-Landly-Authorization")
+	// Fallback to standard Authorization for backward compatibility (curl, Postman)
+	if authHeader == "" {
+		authHeader = c.GetHeader("Authorization")
+	}
+	if authHeader == "" {
+		RespondUnauthorized(c, "UNAUTHORIZED", "Authorization required")
+		c.Abort()
+		return
+	}
+
+	// Format: Bearer <token>
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		RespondUnauthorized(c, "INVALID_TOKEN", "Invalid authorization format")
+		c.Abort()
+		return
+	}
+
+	tokenString := parts[1]
+
+	// Parse token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(jwtSecret), nil
+	})
+
+	if err != nil {
+		// Check if token is expired
+		if strings.Contains(err.Error(), "expired") {
+			RespondUnauthorized(c, "TOKEN_EXPIRED", "Token has expired")
+		} else {
+			RespondUnauthorized(c, "INVALID_TOKEN", "Invalid token")
 		}
+		c.Abort()
+		return
+	}
 
-		// Формат: Bearer <token>
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization format"})
-			c.Abort()
-			return
-		}
+	if !token.Valid {
+		RespondUnauthorized(c, "INVALID_TOKEN", "Token is not valid")
+		c.Abort()
+		return
+	}
 
-		tokenString := parts[1]
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		RespondUnauthorized(c, "INVALID_TOKEN", "Invalid token claims")
+		c.Abort()
+		return
+	}
 
-		// Парсинг токена
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			return []byte(jwtSecret), nil
-		})
+	userIDStr, ok := claims["user_id"].(string)
+	if !ok {
+		RespondUnauthorized(c, "INVALID_TOKEN", "Invalid user_id in token")
+		c.Abort()
+		return
+	}
 
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token", "details": err.Error()})
-			c.Abort()
-			return
-		}
-
-		if !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "token not valid"})
-			c.Abort()
-			return
-		}
-
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
-			c.Abort()
-			return
-		}
-
-		userIDStr, ok := claims["user_id"].(string)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user_id in token"})
-			c.Abort()
-			return
-		}
-
-		userID, err := uuid.Parse(userIDStr)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user_id format"})
-			c.Abort()
-			return
-		}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		RespondUnauthorized(c, "INVALID_TOKEN", "Invalid user_id format")
+		c.Abort()
+		return
+	}
 
 		// Сохраняем user_id в контексте
 		c.Set("user_id", userID)
@@ -116,7 +129,8 @@ func CORSMiddleware(allowedOrigins, allowedMethods, allowedHeaders []string) gin
 	}
 
 	methodsHeader := strings.Join(defaultIfEmpty(allowedMethods, []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}), ", ")
-	headersHeader := strings.Join(defaultIfEmpty(allowedHeaders, []string{"Authorization", "Content-Type"}), ", ")
+	// Include X-Landly-Authorization for Yandex Serverless compatibility
+	headersHeader := strings.Join(defaultIfEmpty(allowedHeaders, []string{"Content-Type", "X-Landly-Authorization", "Authorization"}), ", ")
 
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")

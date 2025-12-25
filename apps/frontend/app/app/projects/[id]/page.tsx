@@ -19,7 +19,7 @@ import {
   ProjectPublishInfo,
 } from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LandingPreview } from '@/components/landing-preview'
 import { SchemaDiff } from '@/components/schema-diff'
 import { SchemaHistory } from '@/components/schema-history'
@@ -58,14 +58,6 @@ const formatMessageTime = (value: string) =>
     hour: '2-digit',
     minute: '2-digit',
   })
-
-const truncate = (value: string, limit = 80) => {
-  const runes = Array.from(value)
-  if (runes.length <= limit) {
-    return value
-  }
-  return `${runes.slice(0, limit).join('')}...`
-}
 
 export default function ProjectPage() {
   const router = useRouter()
@@ -543,41 +535,6 @@ export default function ProjectPage() {
 
             {previousSchema && schema && (
               <SchemaDiff oldSchema={previousSchema} newSchema={schema} />
-            )}
-
-            {chatSession && (
-              <Card className="surface-card border-white/40 text-slate-900">
-                <CardHeader className="border-b border-white/50">
-                  <CardTitle className="text-base font-semibold">Сессия генерации</CardTitle>
-                  <CardDescription className="text-xs text-slate-500">
-                    Последнее обновление: {new Date(chatSession.updated_at).toLocaleString('ru-RU')}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm text-slate-700">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Статус</span>
-                    <span className="font-medium text-slate-800">
-                      {chatSession.status === 'completed'
-                        ? 'Готово'
-                        : chatSession.status === 'failed'
-                        ? 'Ошибка'
-                        : 'В процессе'}
-                    </span>
-                  </div>
-                  {chatSession.completed_at && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Ответ</span>
-                      <span className="font-medium text-slate-800">
-                        {new Date(chatSession.completed_at).toLocaleString('ru-RU')}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">ID сессии</span>
-                    <span className="font-mono text-xs text-slate-500">{truncate(chatSession.id, 18)}</span>
-                  </div>
-                </CardContent>
-              </Card>
             )}
           </div>
         </div>

@@ -272,7 +272,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.http.write_timeout", "30s")
 	v.SetDefault("server.cors.allowed_origins", []string{"*"})
 	v.SetDefault("server.cors.allowed_methods", []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"})
-	v.SetDefault("server.cors.allowed_headers", []string{"Authorization", "Content-Type"})
+	// X-Landly-Authorization is used instead of Authorization for Yandex Serverless compatibility
+	v.SetDefault("server.cors.allowed_headers", []string{"Content-Type", "X-Landly-Authorization", "Authorization"})
 
 	// Auth defaults (secret MUST be provided via env)
 	v.SetDefault("auth.jwt.secret", "")

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	domain "github.com/landly/backend/internal/models"
 )
 
 // SimpleGenerateRequest простая структура для генерации
@@ -61,7 +62,7 @@ func (h *SimpleGenerateHandler) GenerateSimple(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, SimpleGenerateResponse{
 			Success: false,
-			Error:   err.Error(),
+			Error:   "Invalid request format",
 		})
 		return
 	}
@@ -69,9 +70,18 @@ func (h *SimpleGenerateHandler) GenerateSimple(c *gin.Context) {
 	// Генерируем лендинг
 	schema, err := h.generateService.GenerateSimple(c.Request.Context(), userID.String(), projectID.String(), req.Prompt, req.PaymentURL)
 	if err != nil {
+		// Check for domain error with user-friendly message
+		if domainErr, ok := err.(*domain.Error); ok {
+			c.JSON(domainErr.HTTPStatus(), SimpleGenerateResponse{
+				Success: false,
+				Error:   domainErr.Message,
+			})
+			return
+		}
+		// Don't expose internal error details
 		c.JSON(http.StatusInternalServerError, SimpleGenerateResponse{
 			Success: false,
-			Error:   err.Error(),
+			Error:   "Generation failed. Please try again.",
 		})
 		return
 	}

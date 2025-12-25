@@ -39,13 +39,13 @@ func NewSchemaHandler(schemaVersionService SchemaVersionService) *SchemaHandler 
 func (h *SchemaHandler) GetSchemaVersions(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
@@ -59,10 +59,10 @@ func (h *SchemaHandler) GetSchemaVersions(c *gin.Context) {
 	versions, err := h.schemaVersionService.ListVersions(c.Request.Context(), userID.String(), projectID.String(), limit)
 	if err != nil {
 		if domainErr, ok := err.(*domain.Error); ok {
-			c.JSON(domainErr.HTTPStatus(), gin.H{"error": domainErr.Message})
+			RespondError(c, domainErr)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondInternalError(c)
 		return
 	}
 
@@ -97,29 +97,29 @@ func (h *SchemaHandler) GetSchemaVersions(c *gin.Context) {
 func (h *SchemaHandler) RevertSchema(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	var req dto.RevertSchemaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
 	project, err := h.schemaVersionService.RevertToVersion(c.Request.Context(), userID.String(), projectID.String(), req.VersionID)
 	if err != nil {
 		if domainErr, ok := err.(*domain.Error); ok {
-			c.JSON(domainErr.HTTPStatus(), gin.H{"error": domainErr.Message})
+			RespondError(c, domainErr)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondInternalError(c)
 		return
 	}
 

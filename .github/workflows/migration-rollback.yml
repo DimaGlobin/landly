@@ -1,0 +1,134 @@
+name: Migration Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+      steps:
+        description: 'Number of migrations to rollback'
+        required: true
+        default: '1'
+        type: string
+      confirm:
+        description: 'Type "ROLLBACK" to confirm'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "ROLLBACK" ]; then
+            echo "❌ ERROR: You must type 'ROLLBACK' to confirm"
+            echo "This is a destructive operation!"
+            exit 1
+          fi
+          echo "✅ Confirmation received"
+
+      - name: Validate steps
+        run: |
+          STEPS="${{ inputs.steps }}"
+          if ! [[ "$STEPS" =~ ^[0-9]+$ ]]; then
+            echo "❌ ERROR: Steps must be a positive integer"
+            exit 1
+          fi
+          if [ "$STEPS" -lt 1 ] || [ "$STEPS" -gt 5 ]; then
+            echo "❌ ERROR: Steps must be between 1 and 5"
+            echo "For larger rollbacks, run multiple times or use manual intervention"
+            exit 1
+          fi
+          echo "✅ Will rollback $STEPS migration(s)"
+
+  rollback:
+    name: Rollback Migrations
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@latest
+
+      - name: Show current status
+        env:
+          LANDLY_DATABASE_POSTGRES_HOST: ${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}
+          LANDLY_DATABASE_POSTGRES_PORT: ${{ secrets.LANDLY_DATABASE_POSTGRES_PORT }}
+          LANDLY_DATABASE_POSTGRES_USER: ${{ secrets.LANDLY_DATABASE_POSTGRES_USER }}
+          LANDLY_DATABASE_POSTGRES_PASSWORD: ${{ secrets.LANDLY_DATABASE_POSTGRES_PASSWORD }}
+          LANDLY_DATABASE_POSTGRES_DBNAME: ${{ secrets.LANDLY_DATABASE_POSTGRES_DBNAME }}
+          LANDLY_DATABASE_POSTGRES_SSLMODE: ${{ secrets.LANDLY_DATABASE_POSTGRES_SSLMODE }}
+        run: |
+          DSN="postgres://${LANDLY_DATABASE_POSTGRES_USER}:${LANDLY_DATABASE_POSTGRES_PASSWORD}@${LANDLY_DATABASE_POSTGRES_HOST}:${LANDLY_DATABASE_POSTGRES_PORT}/${LANDLY_DATABASE_POSTGRES_DBNAME}?sslmode=${LANDLY_DATABASE_POSTGRES_SSLMODE}"
+          
+          echo "=== Current Migration Status ==="
+          goose -dir apps/backend/migrations postgres "$DSN" status
+          
+          echo ""
+          echo "=== Current Version ==="
+          goose -dir apps/backend/migrations postgres "$DSN" version
+
+      - name: Rollback migrations
+        env:
+          LANDLY_DATABASE_POSTGRES_HOST: ${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}
+          LANDLY_DATABASE_POSTGRES_PORT: ${{ secrets.LANDLY_DATABASE_POSTGRES_PORT }}
+          LANDLY_DATABASE_POSTGRES_USER: ${{ secrets.LANDLY_DATABASE_POSTGRES_USER }}
+          LANDLY_DATABASE_POSTGRES_PASSWORD: ${{ secrets.LANDLY_DATABASE_POSTGRES_PASSWORD }}
+          LANDLY_DATABASE_POSTGRES_DBNAME: ${{ secrets.LANDLY_DATABASE_POSTGRES_DBNAME }}
+          LANDLY_DATABASE_POSTGRES_SSLMODE: ${{ secrets.LANDLY_DATABASE_POSTGRES_SSLMODE }}
+        run: |
+          DSN="postgres://${LANDLY_DATABASE_POSTGRES_USER}:${LANDLY_DATABASE_POSTGRES_PASSWORD}@${LANDLY_DATABASE_POSTGRES_HOST}:${LANDLY_DATABASE_POSTGRES_PORT}/${LANDLY_DATABASE_POSTGRES_DBNAME}?sslmode=${LANDLY_DATABASE_POSTGRES_SSLMODE}"
+          
+          STEPS="${{ inputs.steps }}"
+          
+          echo "=== Rolling back $STEPS migration(s) ==="
+          for i in $(seq 1 $STEPS); do
+            echo ""
+            echo "--- Rollback step $i of $STEPS ---"
+            goose -dir apps/backend/migrations postgres "$DSN" down
+          done
+
+      - name: Show final status
+        env:
+          LANDLY_DATABASE_POSTGRES_HOST: ${{ secrets.LANDLY_DATABASE_POSTGRES_HOST }}
+          LANDLY_DATABASE_POSTGRES_PORT: ${{ secrets.LANDLY_DATABASE_POSTGRES_PORT }}
+          LANDLY_DATABASE_POSTGRES_USER: ${{ secrets.LANDLY_DATABASE_POSTGRES_USER }}
+          LANDLY_DATABASE_POSTGRES_PASSWORD: ${{ secrets.LANDLY_DATABASE_POSTGRES_PASSWORD }}
+          LANDLY_DATABASE_POSTGRES_DBNAME: ${{ secrets.LANDLY_DATABASE_POSTGRES_DBNAME }}
+          LANDLY_DATABASE_POSTGRES_SSLMODE: ${{ secrets.LANDLY_DATABASE_POSTGRES_SSLMODE }}
+        run: |
+          DSN="postgres://${LANDLY_DATABASE_POSTGRES_USER}:${LANDLY_DATABASE_POSTGRES_PASSWORD}@${LANDLY_DATABASE_POSTGRES_HOST}:${LANDLY_DATABASE_POSTGRES_PORT}/${LANDLY_DATABASE_POSTGRES_DBNAME}?sslmode=${LANDLY_DATABASE_POSTGRES_SSLMODE}"
+          
+          echo ""
+          echo "=== Final Migration Status ==="
+          goose -dir apps/backend/migrations postgres "$DSN" status
+          
+          echo ""
+          echo "=== Final Version ==="
+          goose -dir apps/backend/migrations postgres "$DSN" version
+
+      - name: Rollback summary
+        run: |
+          echo "### Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Migrations rolled back:** ${{ inputs.steps }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Note:** After rollback, you may need to redeploy the application with a compatible version." >> $GITHUB_STEP_SUMMARY
+

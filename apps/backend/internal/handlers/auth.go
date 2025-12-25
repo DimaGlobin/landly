@@ -36,7 +36,7 @@ func NewAuthHandler(authService AuthService) *AuthHandler {
 func (h *AuthHandler) SignUp(c *gin.Context) {
 	var req dto.SignUpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
@@ -46,10 +46,10 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 	})
 	if err != nil {
 		if domainErr, ok := err.(*domain.Error); ok {
-			c.JSON(domainErr.HTTPStatus(), gin.H{"error": domainErr.Message})
+			RespondError(c, domainErr)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		RespondInternalError(c)
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 func (h *AuthHandler) SignIn(c *gin.Context) {
 	var req dto.SignInRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
@@ -81,10 +81,10 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 	})
 	if err != nil {
 		if domainErr, ok := err.(*domain.Error); ok {
-			c.JSON(domainErr.HTTPStatus(), gin.H{"error": domainErr.Message})
+			RespondError(c, domainErr)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		RespondInternalError(c)
 		return
 	}
 	c.JSON(http.StatusOK, dto.AuthResponse{
@@ -105,17 +105,17 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var req dto.RefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
 	tokens, err := h.authService.RefreshToken(c.Request.Context(), req.RefreshToken)
 	if err != nil {
 		if domainErr, ok := err.(*domain.Error); ok {
-			c.JSON(domainErr.HTTPStatus(), gin.H{"error": domainErr.Message})
+			RespondError(c, domainErr)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		RespondInternalError(c)
 		return
 	}
 

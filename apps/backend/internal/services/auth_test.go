@@ -52,7 +52,11 @@ func TestAuthService_SignIn_InvalidPassword(t *testing.T) {
 	resp, err := authService.SignIn(ctx, stored.Email, "wrong")
 	assert.Nil(t, resp)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid credentials")
+
+	// Check it's the correct error type
+	domainErr, ok := err.(*domain.Error)
+	assert.True(t, ok, "expected domain.Error")
+	assert.Equal(t, "INVALID_CREDENTIALS", domainErr.Code)
 }
 
 func TestAuthService_ValidateToken_Success(t *testing.T) {

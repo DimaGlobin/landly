@@ -39,7 +39,7 @@ func NewAnalyticsHandler(analyticsService AnalyticsService) *AnalyticsHandler {
 func (h *AnalyticsHandler) TrackEvent(c *gin.Context) {
 	var req dto.TrackEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondValidationError(c, err.Error())
 		return
 	}
 
@@ -67,19 +67,23 @@ func (h *AnalyticsHandler) TrackEvent(c *gin.Context) {
 func (h *AnalyticsHandler) GetStats(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		RespondError(c, domain.ErrUnauthorized)
 		return
 	}
 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID"))
 		return
 	}
 
 	stats, err := h.analyticsService.GetProjectAnalytics(c.Request.Context(), userID.String(), projectID.String())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if domainErr, ok := err.(*domain.Error); ok {
+			RespondError(c, domainErr)
+			return
+		}
+		RespondInternalError(c)
 		return
 	}
 
