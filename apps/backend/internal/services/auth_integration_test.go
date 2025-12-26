@@ -68,8 +68,8 @@ func TestAuthService_Integration_DuplicateEmail(t *testing.T) {
 	require.Error(t, err, "Duplicate email should fail")
 	var domainErr *domain.Error
 	require.True(t, errors.As(err, &domainErr), "error should be a domain error")
-	assert.Equal(t, domain.ErrConflict.Code, domainErr.Code)
-	assert.Contains(t, domainErr.Message, "уже существует")
+	assert.Equal(t, "USER_ALREADY_EXISTS", domainErr.Code)
+	assert.Contains(t, domainErr.Message, "already exists")
 }
 
 func TestAuthService_Integration_InvalidCredentials(t *testing.T) {
