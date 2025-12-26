@@ -235,6 +235,16 @@ func createTestSchema(db *sql.DB) error {
 		ip_address VARCHAR(50),
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
+
+	CREATE TABLE IF NOT EXISTS project_schema_versions (
+		id UUID PRIMARY KEY,
+		project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		schema_json TEXT NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+		source VARCHAR(50) NOT NULL DEFAULT 'chat',
+		tokens_used INTEGER NOT NULL DEFAULT 0
+	);
 	`
 
 	_, err := db.Exec(schema)
@@ -250,6 +260,7 @@ func cleanupTestDB(t *testing.T, db *sql.DB) {
 		"publish_targets",
 		"integrations",
 		"generation_sessions",
+		"project_schema_versions",
 		"projects",
 		"users",
 	}

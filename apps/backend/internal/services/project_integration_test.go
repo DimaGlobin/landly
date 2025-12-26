@@ -8,7 +8,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,7 +22,9 @@ func TestProjectService_Integration_CRUD(t *testing.T) {
 	projectService := NewProjectService(projectRepo)
 
 	ctx := context.Background()
-	userID := uuid.New()
+	// Create a real user first (foreign key requirement)
+	user, _ := testhelpers.CreateTestUser(t, qb, "", "")
+	userID := user.ID
 
 	// Create a project
 	project, err := projectService.CreateProject(ctx, userID.String(), &domain.CreateProjectRequest{
@@ -80,8 +81,11 @@ func TestProjectService_Integration_AccessControl(t *testing.T) {
 	projectService := NewProjectService(projectRepo)
 
 	ctx := context.Background()
-	ownerID := uuid.New()
-	otherUserID := uuid.New()
+	// Create real users (foreign key requirement)
+	owner, _ := testhelpers.CreateTestUser(t, qb, "", "")
+	otherUser, _ := testhelpers.CreateTestUser(t, qb, "", "")
+	ownerID := owner.ID
+	otherUserID := otherUser.ID
 
 	// Create a project as owner
 	project, err := projectService.CreateProject(ctx, ownerID.String(), &domain.CreateProjectRequest{
@@ -123,7 +127,9 @@ func TestProjectService_Integration_MultipleProjects(t *testing.T) {
 	projectService := NewProjectService(projectRepo)
 
 	ctx := context.Background()
-	userID := uuid.New()
+	// Create a real user first (foreign key requirement)
+	user, _ := testhelpers.CreateTestUser(t, qb, "", "")
+	userID := user.ID
 
 	// Create multiple projects
 	projectNames := []string{"Project A", "Project B", "Project C"}
@@ -147,7 +153,9 @@ func TestProjectService_Integration_ValidationErrors(t *testing.T) {
 	projectService := NewProjectService(projectRepo)
 
 	ctx := context.Background()
-	userID := uuid.New()
+	// Create a real user first (foreign key requirement)
+	user, _ := testhelpers.CreateTestUser(t, qb, "", "")
+	userID := user.ID
 
 	// Empty name should fail
 	_, err := projectService.CreateProject(ctx, userID.String(), &domain.CreateProjectRequest{
