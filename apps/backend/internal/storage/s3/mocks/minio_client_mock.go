@@ -54,3 +54,31 @@ func (m *MinioClientMock) RemoveObject(ctx context.Context, bucketName, objectNa
 	args := m.Called(ctx, bucketName, objectName, opts)
 	return args.Error(0)
 }
+
+func (m *MinioClientMock) ListObjects(ctx context.Context, bucketName string, opts minio.ListObjectsOptions) <-chan minio.ObjectInfo {
+	args := m.Called(ctx, bucketName, opts)
+	if ch, ok := args.Get(0).(<-chan minio.ObjectInfo); ok {
+		return ch
+	}
+	ch := make(chan minio.ObjectInfo)
+	close(ch)
+	return ch
+}
+
+func (m *MinioClientMock) RemoveObjects(ctx context.Context, bucketName string, objectsCh <-chan minio.ObjectInfo, opts minio.RemoveObjectsOptions) <-chan minio.RemoveObjectError {
+	args := m.Called(ctx, bucketName, objectsCh, opts)
+	if ch, ok := args.Get(0).(<-chan minio.RemoveObjectError); ok {
+		return ch
+	}
+	ch := make(chan minio.RemoveObjectError)
+	close(ch)
+	return ch
+}
+
+func (m *MinioClientMock) CopyObject(ctx context.Context, dst minio.CopyDestOptions, src minio.CopySrcOptions) (minio.UploadInfo, error) {
+	args := m.Called(ctx, dst, src)
+	if info, ok := args.Get(0).(minio.UploadInfo); ok {
+		return info, args.Error(1)
+	}
+	return minio.UploadInfo{}, args.Error(1)
+}

@@ -2,14 +2,13 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/landly/backend/internal/handlers/dto"
 	domain "github.com/landly/backend/internal/models"
+	"github.com/landly/backend/internal/services"
 )
 
 // ProjectService интерфейс для сервиса проектов
@@ -22,24 +21,17 @@ type ProjectService interface {
 }
 
 type ProjectHandler struct {
-	projectService ProjectService
-	publishRepo    domain.PublishTargetRepository
-	publicBase     string
+	projectService    ProjectService
+	publishRepo       domain.PublishTargetRepository
+	publicBaseProvider services.PublicBaseProvider
 }
 
-func NewProjectHandler(projectService ProjectService, publishRepo domain.PublishTargetRepository, publicBase string) *ProjectHandler {
+func NewProjectHandler(projectService ProjectService, publishRepo domain.PublishTargetRepository, publicBaseProvider services.PublicBaseProvider) *ProjectHandler {
 	return &ProjectHandler{
-		projectService: projectService,
-		publishRepo:    publishRepo,
-		publicBase:     strings.TrimRight(publicBase, "/"),
+		projectService:    projectService,
+		publishRepo:       publishRepo,
+		publicBaseProvider: publicBaseProvider,
 	}
-}
-
-func (h *ProjectHandler) publicBaseURL() string {
-	if h.publicBase != "" {
-		return h.publicBase
-	}
-	return "http://localhost:8080"
 }
 
 func (h *ProjectHandler) getPublishInfo(ctx context.Context, projectID uuid.UUID) *dto.ProjectPublishInfo {
@@ -56,11 +48,8 @@ func (h *ProjectHandler) getPublishInfo(ctx context.Context, projectID uuid.UUID
 		return nil
 	}
 
-	publicURL := fmt.Sprintf("%s/sites/%s", h.publicBaseURL(), target.Subdomain)
-
 	return &dto.ProjectPublishInfo{
 		Status:          target.Status,
-		PublicURL:       publicURL,
 		Subdomain:       target.Subdomain,
 		LastPublishedAt: target.LastPublishedAt,
 	}
@@ -97,7 +86,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 
@@ -133,7 +122,7 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 
@@ -222,7 +211,7 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 

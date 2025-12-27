@@ -220,6 +220,7 @@ func createTestSchema(db *sql.DB) error {
 		project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 		subdomain VARCHAR(255) UNIQUE NOT NULL,
 		status VARCHAR(50) NOT NULL DEFAULT 'draft',
+		current_release_id UUID,
 		last_published_at TIMESTAMPTZ,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

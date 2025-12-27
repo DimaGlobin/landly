@@ -10,23 +10,13 @@ import (
 	"github.com/landly/backend/internal/query"
 )
 
-// IntegrationRepository интерфейс репозитория интеграций
-type IntegrationRepository interface {
-	Create(ctx context.Context, integration *domain.Integration) error
-	GetByID(ctx context.Context, id string) (*domain.Integration, error)
-	GetByProjectID(ctx context.Context, projectID string) ([]*domain.Integration, error)
-	GetByProjectIDAndType(ctx context.Context, projectID string, integrationType domain.IntegrationType) (*domain.Integration, error)
-	Update(ctx context.Context, integration *domain.Integration) error
-	Delete(ctx context.Context, id string) error
-}
-
 // integrationRepository реализация репозитория интеграций
 type integrationRepository struct {
 	qb *query.Builder
 }
 
 // NewIntegrationRepository создает новый репозиторий интеграций
-func NewIntegrationRepository(qb *query.Builder) IntegrationRepository {
+func NewIntegrationRepository(qb *query.Builder) domain.IntegrationRepository {
 	return &integrationRepository{qb: qb}
 }
 
@@ -41,20 +31,15 @@ func (r *integrationRepository) Create(ctx context.Context, integration *domain.
 }
 
 // GetByID получает интеграцию по ID
-func (r *integrationRepository) GetByID(ctx context.Context, id string) (*domain.Integration, error) {
-	integrationID, err := uuid.Parse(id)
-	if err != nil {
-		return nil, domain.ErrBadRequest.WithMessage("invalid integration ID format")
-	}
-
+func (r *integrationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Integration, error) {
 	query := r.qb.Select("id", "project_id", "type", "config", "created_at", "updated_at").
 		From("integrations").
-		Where(squirrel.Eq{"id": integrationID})
+		Where(squirrel.Eq{"id": id})
 
 	row := r.qb.QueryRow(query)
 
 	var integration domain.Integration
-	err = row.Scan(&integration.ID, &integration.ProjectID, &integration.Type, &integration.Config, &integration.CreatedAt, &integration.UpdatedAt)
+	err := row.Scan(&integration.ID, &integration.ProjectID, &integration.Type, &integration.Config, &integration.CreatedAt, &integration.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrNotFound.WithMessage("integration not found")
@@ -66,15 +51,10 @@ func (r *integrationRepository) GetByID(ctx context.Context, id string) (*domain
 }
 
 // GetByProjectID получает интеграции проекта
-func (r *integrationRepository) GetByProjectID(ctx context.Context, projectID string) ([]*domain.Integration, error) {
-	projectUUID, err := uuid.Parse(projectID)
-	if err != nil {
-		return nil, domain.ErrBadRequest.WithMessage("invalid project ID format")
-	}
-
+func (r *integrationRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*domain.Integration, error) {
 	query := r.qb.Select("id", "project_id", "type", "config", "created_at", "updated_at").
 		From("integrations").
-		Where(squirrel.Eq{"project_id": projectUUID}).
+		Where(squirrel.Eq{"project_id": projectID}).
 		OrderBy("created_at DESC")
 
 	rows, err := r.qb.Query(query)
@@ -97,20 +77,15 @@ func (r *integrationRepository) GetByProjectID(ctx context.Context, projectID st
 }
 
 // GetByProjectIDAndType получает интеграцию по ID проекта и типу
-func (r *integrationRepository) GetByProjectIDAndType(ctx context.Context, projectID string, integrationType domain.IntegrationType) (*domain.Integration, error) {
-	projectUUID, err := uuid.Parse(projectID)
-	if err != nil {
-		return nil, domain.ErrBadRequest.WithMessage("invalid project ID format")
-	}
-
+func (r *integrationRepository) GetByProjectIDAndType(ctx context.Context, projectID uuid.UUID, integrationType string) (*domain.Integration, error) {
 	query := r.qb.Select("id", "project_id", "type", "config", "created_at", "updated_at").
 		From("integrations").
-		Where(squirrel.Eq{"project_id": projectUUID, "type": string(integrationType)})
+		Where(squirrel.Eq{"project_id": projectID, "type": integrationType})
 
 	row := r.qb.QueryRow(query)
 
 	var integration domain.Integration
-	err = row.Scan(&integration.ID, &integration.ProjectID, &integration.Type, &integration.Config, &integration.CreatedAt, &integration.UpdatedAt)
+	err := row.Scan(&integration.ID, &integration.ProjectID, &integration.Type, &integration.Config, &integration.CreatedAt, &integration.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrNotFound.WithMessage("integration not found")
@@ -134,15 +109,10 @@ func (r *integrationRepository) Update(ctx context.Context, integration *domain.
 }
 
 // Delete удаляет интеграцию
-func (r *integrationRepository) Delete(ctx context.Context, id string) error {
-	integrationID, err := uuid.Parse(id)
-	if err != nil {
-		return domain.ErrBadRequest.WithMessage("invalid integration ID format")
-	}
-
+func (r *integrationRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := r.qb.Delete("integrations").
-		Where(squirrel.Eq{"id": integrationID})
+		Where(squirrel.Eq{"id": id})
 
-	_, err = r.qb.Execute(query)
+	_, err := r.qb.Execute(query)
 	return err
 }

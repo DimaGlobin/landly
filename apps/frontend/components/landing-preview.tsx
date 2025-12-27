@@ -67,19 +67,20 @@ export function LandingPreview({ schema }: LandingPreviewProps) {
       </div>
 
       <div className="max-h-[800px] overflow-y-auto">
-        {page ? (
-          <main className="landing" style={cssVariables}>
-            {sortedBlocks.length > 0 ? (
+        {/* Всегда рендерим .landing для консистентного фона с градиентами */}
+        <main className="landing" style={{ ...cssVariables, transition: 'color 0.3s ease, background-color 0.3s ease' }}>
+          {page ? (
+            sortedBlocks.length > 0 ? (
               sortedBlocks.map((block) => (
                 <BlockRenderer key={`${block.type}-${block.order}`} block={block} schema={schema} />
               ))
             ) : (
               <div className="landing-empty-state">Нет блоков для отображения</div>
-            )}
-          </main>
-        ) : (
-          <div className="landing-empty-state">Схема пока не содержит страниц</div>
-        )}
+            )
+          ) : (
+            <div className="landing-empty-state">Сгенерируйте описание, чтобы увидеть лендинг.</div>
+          )}
+        </main>
       </div>
     </div>
   )

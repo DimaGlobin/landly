@@ -8,6 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/landly/backend/internal/logger"
+	"github.com/landly/backend/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
 
@@ -19,6 +21,7 @@ type Router struct {
 	simpleGenerateHandler *SimpleGenerateHandler
 	analyticsHandler      *AnalyticsHandler
 	schemaHandler         *SchemaHandler
+	userHandler           *UserHandler
 	jwtSecret             string
 	allowedOrigins        []string
 	allowedMethods        []string
@@ -34,6 +37,7 @@ func NewRouter(
 	simpleGenerateHandler *SimpleGenerateHandler,
 	analyticsHandler *AnalyticsHandler,
 	schemaHandler *SchemaHandler,
+	userHandler *UserHandler,
 	jwtSecret string,
 	allowedOrigins []string,
 	allowedMethods []string,
@@ -48,6 +52,7 @@ func NewRouter(
 		simpleGenerateHandler: simpleGenerateHandler,
 		analyticsHandler:      analyticsHandler,
 		schemaHandler:         schemaHandler,
+		userHandler:           userHandler,
 		jwtSecret:             jwtSecret,
 		allowedOrigins:        allowedOrigins,
 		allowedMethods:        allowedMethods,
@@ -65,24 +70,28 @@ func (r *Router) SetDB(db *sql.DB) {
 func (r *Router) Setup() *gin.Engine {
 	// Middleware
 	r.engine.Use(CORSMiddleware(r.allowedOrigins, r.allowedMethods, r.allowedHeaders))
+	r.engine.Use(metrics.Middleware()) // Prometheus metrics
 	r.engine.Use(logger.TraceMiddleware())
 	r.engine.Use(logger.LoggingMiddleware())
 	r.engine.Use(RequestIDMiddleware())
 	r.engine.Use(LoggerMiddleware(r.logger))
+
+	// Prometheus metrics endpoint
+	r.engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Health checks
 	r.engine.GET("/health", r.healthCheck)
 	r.engine.GET("/healthz", r.healthCheck)
 	r.engine.GET("/readyz", r.readinessCheck)
 
-	// Published static sites (public)
-	r.engine.GET("/sites/:slug", r.generateHandler.ServePublished)
-	r.engine.GET("/sites/:slug/*path", r.generateHandler.ServePublished)
-	r.engine.GET("/:slug", r.generateHandler.ServePublishedLegacy)
-
 	// API v1
 	v1 := r.engine.Group("/v1")
 	{
+		// Health checks (also available under /v1 for API Gateway compatibility)
+		v1.GET("/health", r.healthCheck)
+		v1.GET("/healthz", r.healthCheck)
+		v1.GET("/readyz", r.readinessCheck)
+
 		// Auth (public)
 		auth := v1.Group("/auth")
 		{
@@ -123,7 +132,32 @@ func (r *Router) Setup() *gin.Engine {
 			// Private endpoint for stats
 			analytics.GET("/:id/stats", AuthMiddleware(r.jwtSecret), r.analyticsHandler.GetStats)
 		}
+
+		// User profile (require auth)
+		user := v1.Group("/user")
+		user.Use(AuthMiddleware(r.jwtSecret))
+		{
+			user.GET("/profile", r.userHandler.GetProfile)
+			user.PUT("/profile", r.userHandler.UpdateProfile)
+		}
+
+		// Legacy: /v1/sites/* → redirect to /sites/* (canonical)
+		legacySites := v1.Group("/sites")
+		{
+			legacySites.GET("/:slug", r.redirectToCanonicalSites)
+			legacySites.GET("/:slug/*path", r.redirectToCanonicalSites)
+		}
 	}
+
+	// Canonical: Published static sites at /sites/* (without /v1)
+	sites := r.engine.Group("/sites")
+	{
+		sites.GET("/:slug", r.generateHandler.ServePublished)
+		sites.GET("/:slug/*path", r.generateHandler.ServePublished)
+	}
+
+	// Legacy routes (for backward compatibility, if needed)
+	r.engine.GET("/:slug", r.generateHandler.ServePublishedLegacy)
 
 	return r.engine
 }
@@ -132,6 +166,25 @@ func (r *Router) healthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",
 	})
+}
+
+// redirectToCanonicalSites redirects /v1/sites/* to canonical /sites/*
+func (r *Router) redirectToCanonicalSites(c *gin.Context) {
+	slug := c.Param("slug")
+	path := c.Param("path")
+
+	// Build canonical URL
+	canonicalPath := "/sites/" + slug
+	if path != "" {
+		canonicalPath += path
+	}
+
+	// Preserve query string
+	if c.Request.URL.RawQuery != "" {
+		canonicalPath += "?" + c.Request.URL.RawQuery
+	}
+
+	c.Redirect(http.StatusMovedPermanently, canonicalPath)
 }
 
 // readinessCheck verifies the service is ready to handle traffic.
@@ -145,6 +198,9 @@ func (r *Router) readinessCheck(c *gin.Context) {
 		})
 		return
 	}
+
+	// Update DB pool metrics
+	metrics.RecordDBStats(r.db.Stats())
 
 	// Ping database with timeout
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)

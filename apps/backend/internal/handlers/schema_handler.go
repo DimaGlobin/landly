@@ -62,7 +62,7 @@ func (h *SchemaHandler) GetSchemaVersions(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 
@@ -119,7 +119,7 @@ func (h *SchemaHandler) RevertSchema(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 

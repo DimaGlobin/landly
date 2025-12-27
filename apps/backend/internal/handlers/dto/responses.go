@@ -6,6 +6,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// UserProfileResponse ответ с профилем пользователя
+type UserProfileResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Standard response wrapper
 type Response struct {
 	Success bool        `json:"success"`
@@ -86,8 +94,8 @@ type PreviewResponse struct {
 
 type PublishResponse struct {
 	Subdomain   string `json:"subdomain"`
-	PublicURL   string `json:"public_url"`
-	PublishedAt string `json:"published_at"`
+	Status      string `json:"status"`
+	PublishedAt string `json:"published_at,omitempty"`
 }
 
 // Analytics responses

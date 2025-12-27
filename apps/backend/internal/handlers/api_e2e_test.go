@@ -33,14 +33,17 @@ func setupTestRouter(t *testing.T) *gin.Engine {
 	// Create repositories
 	userRepo := repositories.NewUserRepository(qb)
 	projectRepo := repositories.NewProjectRepository(qb)
+	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
 
 	// Create services
 	authService := services.NewAuthService(userRepo, testJWTSecret, 15*time.Minute, 7*24*time.Hour)
-	projectService := services.NewProjectService(projectRepo)
+	// For e2e tests, we can use nil publisher since project deletion is not tested here
+	projectService := services.NewProjectService(projectRepo, publishTargetRepo, nil)
 
 	// Create handlers
 	authHandler := NewAuthHandler(authService)
-	projectHandler := NewProjectHandler(projectService, nil, "http://localhost:8080")
+	publicBaseProvider := services.NewStaticPublicBaseProvider("http://localhost:8080")
+	projectHandler := NewProjectHandler(projectService, nil, publicBaseProvider)
 
 	// Create router
 	r := gin.New()

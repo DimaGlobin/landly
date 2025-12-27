@@ -6,6 +6,7 @@ import (
 
 	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/landly/backend/internal/metrics"
 	domain "github.com/landly/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -106,6 +107,9 @@ func (s *AuthService) SignUp(ctx context.Context, email, password string) (*Auth
 		return nil, domain.ErrInternal.WithMessage("failed to create user").WithError(err)
 	}
 
+	// Record registration metric
+	metrics.UserRegistrationsTotal.Inc()
+
 	// Генерируем токены
 	return s.generateTokens(user.ID)
 }
@@ -115,13 +119,18 @@ func (s *AuthService) SignIn(ctx context.Context, email, password string) (*Auth
 	// Получаем пользователя
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
+		metrics.UserLoginFailuresTotal.Inc()
 		return nil, domain.ErrInvalidCredentials
 	}
 
 	// Проверяем пароль
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		metrics.UserLoginFailuresTotal.Inc()
 		return nil, domain.ErrInvalidCredentials
 	}
+
+	// Record login metric
+	metrics.UserLoginsTotal.Inc()
 
 	// Генерируем токены
 	return s.generateTokens(user.ID)

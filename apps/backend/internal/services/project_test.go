@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	domain "github.com/landly/backend/internal/models"
+	"github.com/landly/backend/internal/storage/s3"
 )
 
 // Mock for ProjectRepository
@@ -49,10 +51,94 @@ func (m *mockProjectRepository) Delete(ctx context.Context, id string) error {
 	return args.Error(0)
 }
 
+// Mock for PublishTargetRepository
+type mockPublishTargetRepository struct {
+	mock.Mock
+}
+
+func (m *mockPublishTargetRepository) GetByProjectID(ctx context.Context, projectID string) (*domain.PublishTarget, error) {
+	args := m.Called(ctx, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.PublishTarget), args.Error(1)
+}
+
+// Mock for Publisher
+type mockPublisher struct {
+	mock.Mock
+}
+
+func (m *mockPublisher) Upload(ctx context.Context, localPath, remotePath string) error {
+	args := m.Called(ctx, localPath, remotePath)
+	return args.Error(0)
+}
+
+func (m *mockPublisher) GetPublicURL(remotePath string) string {
+	args := m.Called(remotePath)
+	return args.String(0)
+}
+
+func (m *mockPublisher) GetObject(ctx context.Context, remotePath string) (io.ReadCloser, string, error) {
+	args := m.Called(ctx, remotePath)
+	if args.Get(0) == nil {
+		return nil, args.String(1), args.Error(2)
+	}
+	return args.Get(0).(io.ReadCloser), args.String(1), args.Error(2)
+}
+
+func (m *mockPublisher) DeletePrefix(ctx context.Context, prefix string) error {
+	args := m.Called(ctx, prefix)
+	return args.Error(0)
+}
+
+func (m *mockPublisher) UploadToRelease(ctx context.Context, localPath, basePath string, releaseID uuid.UUID) error {
+	args := m.Called(ctx, localPath, basePath, releaseID)
+	return args.Error(0)
+}
+
+func (m *mockPublisher) CreateManifest(ctx context.Context, localPath string) (*s3.ReleaseManifest, error) {
+	args := m.Called(ctx, localPath)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*s3.ReleaseManifest), args.Error(1)
+}
+
+func (m *mockPublisher) UploadIncremental(ctx context.Context, localPath, basePath string, releaseID uuid.UUID, previousManifest *s3.ReleaseManifest) (*s3.ReleaseManifest, error) {
+	args := m.Called(ctx, localPath, basePath, releaseID, previousManifest)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*s3.ReleaseManifest), args.Error(1)
+}
+
+func (m *mockPublisher) SetCurrentRelease(ctx context.Context, basePath string, releaseID uuid.UUID) error {
+	args := m.Called(ctx, basePath, releaseID)
+	return args.Error(0)
+}
+
+func (m *mockPublisher) GetCurrentReleasePath(basePath string) string {
+	args := m.Called(basePath)
+	return args.String(0)
+}
+
+func (m *mockPublisher) GetReleasePath(basePath string, releaseID uuid.UUID) string {
+	args := m.Called(basePath, releaseID)
+	return args.String(0)
+}
+
+func (m *mockPublisher) HasCDN() bool {
+	args := m.Called()
+	return args.Bool(0)
+}
+
 func TestProjectService_CreateProject_Success(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 
@@ -78,7 +164,9 @@ func TestProjectService_CreateProject_Success(t *testing.T) {
 func TestProjectService_CreateProject_InvalidUserID(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	project, err := service.CreateProject(ctx, "invalid-uuid", &domain.CreateProjectRequest{
 		Name:  "My Project",
@@ -96,7 +184,9 @@ func TestProjectService_CreateProject_InvalidUserID(t *testing.T) {
 func TestProjectService_CreateProject_MissingName(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 
@@ -117,7 +207,9 @@ func TestProjectService_CreateProject_MissingName(t *testing.T) {
 func TestProjectService_CreateProject_MissingNiche(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 
@@ -138,7 +230,9 @@ func TestProjectService_CreateProject_MissingNiche(t *testing.T) {
 func TestProjectService_CreateProject_RepositoryError(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 
@@ -162,7 +256,9 @@ func TestProjectService_CreateProject_RepositoryError(t *testing.T) {
 func TestProjectService_GetProject_Success(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -185,7 +281,9 @@ func TestProjectService_GetProject_Success(t *testing.T) {
 func TestProjectService_GetProject_NotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -207,7 +305,9 @@ func TestProjectService_GetProject_NotFound(t *testing.T) {
 func TestProjectService_GetProject_Forbidden(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	ownerID := uuid.New()
 	otherUserID := uuid.New()
@@ -235,7 +335,9 @@ func TestProjectService_GetProject_Forbidden(t *testing.T) {
 func TestProjectService_ListProjects_Success(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projects := []*domain.Project{
@@ -256,7 +358,9 @@ func TestProjectService_ListProjects_Success(t *testing.T) {
 func TestProjectService_ListProjects_EmptyList(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 
@@ -273,7 +377,9 @@ func TestProjectService_ListProjects_EmptyList(t *testing.T) {
 func TestProjectService_ListProjects_RepositoryError(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 
@@ -294,7 +400,9 @@ func TestProjectService_ListProjects_RepositoryError(t *testing.T) {
 func TestProjectService_UpdateProject_Success(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -325,7 +433,9 @@ func TestProjectService_UpdateProject_Success(t *testing.T) {
 func TestProjectService_UpdateProject_PartialUpdate(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -356,7 +466,9 @@ func TestProjectService_UpdateProject_PartialUpdate(t *testing.T) {
 func TestProjectService_UpdateProject_NotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -380,7 +492,9 @@ func TestProjectService_UpdateProject_NotFound(t *testing.T) {
 func TestProjectService_UpdateProject_Forbidden(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	ownerID := uuid.New()
 	otherUserID := uuid.New()
@@ -410,7 +524,9 @@ func TestProjectService_UpdateProject_Forbidden(t *testing.T) {
 func TestProjectService_DeleteProject_Success(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -420,19 +536,31 @@ func TestProjectService_DeleteProject_Success(t *testing.T) {
 		Name:   "Test Project",
 	}
 
+	target := &domain.PublishTarget{
+		ID:        uuid.New(),
+		ProjectID: projectID,
+		Subdomain: "test-project-12345678",
+	}
+
 	repo.On("GetByID", ctx, projectID.String()).Return(existingProject, nil)
+	publishTargetRepo.On("GetByProjectID", ctx, projectID.String()).Return(target, nil)
+	publisher.On("DeletePrefix", ctx, "sites/test-project-12345678").Return(nil)
 	repo.On("Delete", ctx, projectID.String()).Return(nil)
 
 	err := service.DeleteProject(ctx, userID.String(), projectID.String())
 
 	require.NoError(t, err)
 	repo.AssertExpectations(t)
+	publishTargetRepo.AssertExpectations(t)
+	publisher.AssertExpectations(t)
 }
 
 func TestProjectService_DeleteProject_NotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -453,7 +581,9 @@ func TestProjectService_DeleteProject_NotFound(t *testing.T) {
 func TestProjectService_DeleteProject_Forbidden(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	ownerID := uuid.New()
 	otherUserID := uuid.New()
@@ -480,7 +610,9 @@ func TestProjectService_DeleteProject_Forbidden(t *testing.T) {
 func TestProjectService_DeleteProject_RepositoryError(t *testing.T) {
 	ctx := context.Background()
 	repo := new(mockProjectRepository)
-	service := NewProjectService(repo)
+	publishTargetRepo := new(mockPublishTargetRepository)
+	publisher := new(mockPublisher)
+	service := NewProjectService(repo, publishTargetRepo, publisher)
 
 	userID := uuid.New()
 	projectID := uuid.New()
@@ -491,6 +623,8 @@ func TestProjectService_DeleteProject_RepositoryError(t *testing.T) {
 	}
 
 	repo.On("GetByID", ctx, projectID.String()).Return(existingProject, nil)
+	// GetByProjectID вызывается перед удалением для проверки наличия publish target
+	publishTargetRepo.On("GetByProjectID", ctx, projectID.String()).Return(nil, errors.New("not found"))
 	repo.On("Delete", ctx, projectID.String()).Return(errors.New("db error"))
 
 	err := service.DeleteProject(ctx, userID.String(), projectID.String())
@@ -502,5 +636,5 @@ func TestProjectService_DeleteProject_RepositoryError(t *testing.T) {
 	assert.Equal(t, "INTERNAL_ERROR", domainErr.Code)
 
 	repo.AssertExpectations(t)
+	publishTargetRepo.AssertExpectations(t)
 }
-

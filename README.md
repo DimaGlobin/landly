@@ -41,11 +41,20 @@ landly/
 ├── deploy/
 │   ├── docker/       # Docker Compose конфигурация
 │   └── ci/           # GitHub Actions workflows
-├── docs/
-│   ├── API_ENDPOINTS.md  # API документация
-│   └── openapi.yaml      # OpenAPI спецификация
+├── docs/             # Документация (см. ниже)
 └── config.yml        # Конфигурация приложения
 ```
+
+## Документация
+
+| Документ | Описание |
+|----------|----------|
+| [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md) | Описание всех API endpoints с примерами |
+| [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0 спецификация |
+| [docs/ENV_VARIABLES.md](docs/ENV_VARIABLES.md) | Полный справочник переменных окружения |
+| [docs/MONITORING.md](docs/MONITORING.md) | Логирование, метрики, Prometheus, Grafana |
+| [docs/PUBLISHING_ARCHITECTURE.md](docs/PUBLISHING_ARCHITECTURE.md) | Архитектура публикации сайтов и CDN |
+| [apps/backend/migrations/README.md](apps/backend/migrations/README.md) | Работа с миграциями БД |
 
 ## Конфигурация
 
@@ -253,6 +262,23 @@ If you need to trigger deploy manually:
 ```bash
 gh workflow run backend-go.yml --ref main
 ```
+
+## Архитектура
+
+### Логирование и обработка ошибок
+
+- **Структурированные логи**: JSON формат через Zap с trace_id для корреляции
+- **Безопасные ответы**: клиенту отправляются только доменные ошибки, внутренние детали логируются
+- **Централизованные helper-функции**: `RespondError()`, `RespondInternalError()`, `LogSQLError()`
+
+### Публикация сайтов
+
+- Статические сайты рендерятся и загружаются в S3
+- Поддержка CDN для production (опционально)
+- Атомарное переключение версий через release ID
+- Инкрементальная загрузка с manifest-файлами
+
+Подробнее: [docs/PUBLISHING_ARCHITECTURE.md](docs/PUBLISHING_ARCHITECTURE.md)
 
 ## Технологии
 

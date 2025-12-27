@@ -137,6 +137,29 @@
 
 ---
 
+## Frontend Variables
+
+Переменные окружения для Next.js frontend (должны начинаться с `NEXT_PUBLIC_` для доступа в браузере):
+
+| Переменная | Default | Описание |
+|------------|---------|----------|
+| `NEXT_PUBLIC_SITE_BASE_URL` | `https://landlify.ru` | Базовый URL для публичных ссылок на опубликованные сайты |
+
+**Пример использования:**
+
+```bash
+# Production
+NEXT_PUBLIC_SITE_BASE_URL=https://landlify.ru
+
+# Staging
+NEXT_PUBLIC_SITE_BASE_URL=https://staging.landlify.ru
+
+# Local development
+NEXT_PUBLIC_SITE_BASE_URL=http://localhost:8080
+```
+
+---
+
 ## Special Variables
 
 Читаются напрямую через `os.Getenv()`, не через Viper:
@@ -175,6 +198,7 @@
 | `YC_FRONTEND_CONTAINER_ID` | ✅ | Serverless Container ID frontend | `bbsyyyyyyyyy` |
 | `STAGING_FRONTEND_URL` | ✅ | Публичный URL staging frontend | `https://bbsyyyyyyyyy.containers.yandexcloud.net` |
 | `NEXT_PUBLIC_API_URL` | ✅ | URL backend API (передаётся при build) | `https://api.staging.landly.ru` |
+| `NEXT_PUBLIC_SITE_BASE_URL` | ❌ | Базовый URL для публичных сайтов (default: `https://landlify.ru`) | `https://landlify.ru` |
 
 ### Backend Application Config (передаются в container revision)
 
@@ -204,6 +228,7 @@ Frontend (Next.js) использует `NEXT_PUBLIC_*` переменные, к
 | Переменная | Required | Описание | Пример |
 |------------|:--------:|----------|--------|
 | `NEXT_PUBLIC_API_URL` | ✅ | URL backend API | `https://api.landly.ru` |
+| `NEXT_PUBLIC_SITE_BASE_URL` | ❌ | Базовый URL для публичных сайтов | `https://landlify.ru` |
 
 > **Важно:** `NEXT_PUBLIC_*` переменные читаются **только при `npm run build`**, не при runtime. Для production нужно передавать их как `--build-arg` в Docker или как env при сборке в CI.
 

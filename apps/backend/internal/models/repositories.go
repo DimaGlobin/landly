@@ -25,36 +25,6 @@ type ProjectRepository interface {
 	UpdateSchema(ctx context.Context, projectID string, schemaJSON string) error
 }
 
-// PageRepository интерфейс репозитория страниц
-type PageRepository interface {
-	Create(ctx context.Context, page *Page) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Page, error)
-	GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*Page, error)
-	Update(ctx context.Context, page *Page) error
-	Delete(ctx context.Context, id uuid.UUID) error
-	DeleteByProjectID(ctx context.Context, projectID uuid.UUID) error
-}
-
-// BlockRepository интерфейс репозитория блоков
-type BlockRepository interface {
-	Create(ctx context.Context, block *Block) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Block, error)
-	GetByPageID(ctx context.Context, pageID uuid.UUID) ([]*Block, error)
-	Update(ctx context.Context, block *Block) error
-	Delete(ctx context.Context, id uuid.UUID) error
-	DeleteByPageID(ctx context.Context, pageID uuid.UUID) error
-}
-
-// IntegrationRepository интерфейс репозитория интеграций
-type IntegrationRepository interface {
-	Create(ctx context.Context, integration *Integration) error
-	GetByID(ctx context.Context, id string) (*Integration, error)
-	GetByProjectID(ctx context.Context, projectID string) ([]*Integration, error)
-	GetByProjectIDAndType(ctx context.Context, projectID string, integrationType IntegrationType) (*Integration, error)
-	Update(ctx context.Context, integration *Integration) error
-	Delete(ctx context.Context, id string) error
-}
-
 // PublishTargetRepository интерфейс репозитория целей публикации
 type PublishTargetRepository interface {
 	Create(ctx context.Context, target *PublishTarget) error
@@ -63,6 +33,34 @@ type PublishTargetRepository interface {
 	GetBySubdomain(ctx context.Context, subdomain string) (*PublishTarget, error)
 	Update(ctx context.Context, target *PublishTarget) error
 	Delete(ctx context.Context, id string) error
+}
+
+// PublishJobRepository интерфейс репозитория задач публикации
+type PublishJobRepository interface {
+	Create(ctx context.Context, job *PublishJob) error
+	GetByID(ctx context.Context, id string) (*PublishJob, error)
+	GetByProjectID(ctx context.Context, projectID string) ([]*PublishJob, error)
+	GetByStatus(ctx context.Context, status string) ([]*PublishJob, error)
+	GetPendingByProjectID(ctx context.Context, projectID string) (*PublishJob, error)
+	Update(ctx context.Context, job *PublishJob) error
+	Delete(ctx context.Context, id string) error
+}
+
+// IntegrationRepository интерфейс репозитория интеграций
+type IntegrationRepository interface {
+	Create(ctx context.Context, integration *Integration) error
+	GetByID(ctx context.Context, id uuid.UUID) (*Integration, error)
+	GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*Integration, error)
+	GetByProjectIDAndType(ctx context.Context, projectID uuid.UUID, integrationType string) (*Integration, error)
+	Update(ctx context.Context, integration *Integration) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+// AnalyticsRepository интерфейс репозитория аналитики
+type AnalyticsRepository interface {
+	TrackEvent(ctx context.Context, event *AnalyticsEvent) error
+	GetStats(ctx context.Context, projectID uuid.UUID) (*AnalyticsStats, error)
+	GetEvents(ctx context.Context, projectID uuid.UUID, limit, offset int) ([]*AnalyticsEvent, error)
 }
 
 // GenerationSessionRepository интерфейс репозитория сессий генерации
@@ -81,16 +79,10 @@ type GenerationMessageRepository interface {
 	DeleteBySession(ctx context.Context, sessionID string) error
 }
 
-// AnalyticsRepository интерфейс репозитория аналитики
-type AnalyticsRepository interface {
-	TrackEvent(ctx context.Context, event *AnalyticsEvent) error
-	GetStats(ctx context.Context, projectID uuid.UUID) (*AnalyticsStats, error)
-	GetEvents(ctx context.Context, projectID uuid.UUID, limit, offset int) ([]*AnalyticsEvent, error)
-}
-
-// SchemaVersionRepository интерфейс репозитория версий схемы
+// SchemaVersionRepository интерфейс репозитория версий схем
 type SchemaVersionRepository interface {
 	Create(ctx context.Context, version *SchemaVersion) error
 	GetByID(ctx context.Context, id string) (*SchemaVersion, error)
 	GetByProjectID(ctx context.Context, projectID string, limit int) ([]*SchemaVersion, error)
+	Delete(ctx context.Context, id string) error
 }

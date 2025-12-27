@@ -8,9 +8,13 @@ info:
 
 servers:
   - url: http://localhost:8080/v1
-    description: Development server
+    description: Development server (API)
   - url: https://api.landly.ru/v1
-    description: Production server
+    description: Production server (API)
+  - url: http://localhost:8080
+    description: Development server (Sites)
+  - url: https://landlify.ru
+    description: Production server (Sites)
 
 tags:
   - name: auth
@@ -21,6 +25,8 @@ tags:
     description: Генерация лендингов
   - name: analytics
     description: Аналитика
+  - name: sites
+    description: Опубликованные сайты (public)
 
 paths:
   /auth/signup:
@@ -278,6 +284,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnalyticsStats'
+
+  # Published Sites (canonical URLs without /v1)
+  /sites/{slug}:
+    get:
+      tags: [sites]
+      summary: Просмотр опубликованного сайта
+      description: |
+        Канонический URL для опубликованных сайтов.
+        Возвращает HTML страницу лендинга.
+        
+        **Примечание:** Этот путь доступен на корневом уровне (без /v1).
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Уникальный идентификатор (subdomain) сайта
+          schema:
+            type: string
+            example: moj-proekt-550e8400
+      responses:
+        '200':
+          description: HTML страница сайта
+          content:
+            text/html:
+              schema:
+                type: string
+        '301':
+          description: Редирект на CDN (если настроен)
+        '404':
+          description: Сайт не найден
+
+  /sites/{slug}/{path}:
+    get:
+      tags: [sites]
+      summary: Статические ассеты опубликованного сайта
+      description: CSS, JS, изображения и другие файлы сайта
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          required: true
+          description: Путь к файлу
+          schema:
+            type: string
+            example: styles.css
+      responses:
+        '200':
+          description: Содержимое файла
+        '404':
+          description: Файл не найден
+
+  # Legacy (deprecated)
+  /v1/sites/{slug}:
+    get:
+      tags: [sites]
+      summary: "[Deprecated] Устаревший URL сайта"
+      description: |
+        ⚠️ **Deprecated** — Используйте `/sites/{slug}`
+        
+        Выполняет 301 редирект на канонический URL.
+      deprecated: true
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '301':
+          description: Редирект на /sites/{slug}
 
 components:
   securitySchemes:

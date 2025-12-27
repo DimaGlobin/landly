@@ -17,6 +17,7 @@ import (
 
 	"github.com/landly/backend/internal/handlers/dto"
 	domain "github.com/landly/backend/internal/models"
+	"github.com/landly/backend/internal/services"
 )
 
 func init() {
@@ -67,7 +68,8 @@ func (m *mockProjectService) ListProjects(ctx context.Context, userID string) ([
 
 func setupProjectHandler() (*ProjectHandler, *mockProjectService) {
 	service := new(mockProjectService)
-	handler := NewProjectHandler(service, nil, "http://localhost:8080")
+	publicBaseProvider := services.NewStaticPublicBaseProvider("http://localhost:8080")
+	handler := NewProjectHandler(service, nil, publicBaseProvider)
 	return handler, service
 }
 

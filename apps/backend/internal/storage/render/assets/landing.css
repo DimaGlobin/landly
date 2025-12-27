@@ -38,6 +38,13 @@ body,
   gap: 88px;
   min-height: 100vh;
   padding-bottom: 96px;
+  /* Плавный переход цветов при смене палитры */
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+.landing * {
+  /* Наследуем плавный переход для всех элементов, использующих цвета */
+  transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .landing::before {

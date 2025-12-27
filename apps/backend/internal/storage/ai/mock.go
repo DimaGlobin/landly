@@ -176,9 +176,9 @@ func (c *MockClient) GenerateLandingSchema(ctx context.Context, prompt, paymentU
 		},
 		"theme": map[string]interface{}{
 			"palette": map[string]interface{}{
-				"primary":    "#3B82F6",
-				"secondary":  "#8B5CF6",
-				"accent":     "#F59E0B",
+				"primary":    "#2563EB", // Синхронизировано с дефолтными цветами рендерера
+				"secondary":  "#7C3AED", // Синхронизировано с дефолтными цветами рендерера
+				"accent":     "#F97316", // Синхронизировано с дефолтными цветами рендерера
 				"background": "#FFFFFF",
 				"text":       "#1F2937",
 			},

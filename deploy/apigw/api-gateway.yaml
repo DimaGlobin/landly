@@ -1,0 +1,96 @@
+# Yandex API Gateway Configuration
+# 
+# Этот файл — reference для конфигурации API Gateway.
+# Реальные container_id и service_account_id хранятся в Yandex Cloud.
+#
+# Порядок приоритета путей (более специфичные имеют приоритет):
+#   1. /v1/* → Backend API
+#   2. /sites/* → Backend (published sites, canonical URL)
+#   3. /* → Frontend (Next.js)
+
+openapi: 3.0.0
+info:
+  title: landlify
+  version: 1.0.0
+
+servers:
+  - url: https://landlify.ru
+    description: Production
+  - url: https://www.landlify.ru
+    description: Production (www)
+
+paths:
+  # ============================================
+  # Backend API (v1)
+  # ============================================
+  /v1:
+    x-yc-apigateway-any-method:
+      summary: Backend API root (/v1)
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: ${BACKEND_CONTAINER_ID}
+        service_account_id: ${SERVICE_ACCOUNT_ID}
+
+  /v1/{path+}:
+    x-yc-apigateway-any-method:
+      summary: Backend API proxy (/v1/*)
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: ${BACKEND_CONTAINER_ID}
+        service_account_id: ${SERVICE_ACCOUNT_ID}
+
+  # ============================================
+  # Published Sites (canonical, without /v1)
+  # ============================================
+  /sites:
+    x-yc-apigateway-any-method:
+      summary: Public sites root (/sites)
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: ${BACKEND_CONTAINER_ID}
+        service_account_id: ${SERVICE_ACCOUNT_ID}
+
+  /sites/{path+}:
+    x-yc-apigateway-any-method:
+      summary: Public sites proxy (/sites/*)
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: ${BACKEND_CONTAINER_ID}
+        service_account_id: ${SERVICE_ACCOUNT_ID}
+
+  # ============================================
+  # Frontend (Next.js) — catch-all
+  # ============================================
+  /:
+    x-yc-apigateway-any-method:
+      summary: Frontend root (/)
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: ${FRONTEND_CONTAINER_ID}
+        service_account_id: ${SERVICE_ACCOUNT_ID}
+
+  /{path+}:
+    x-yc-apigateway-any-method:
+      summary: Frontend proxy (all other paths)
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: serverless_containers
+        container_id: ${FRONTEND_CONTAINER_ID}
+        service_account_id: ${SERVICE_ACCOUNT_ID}

@@ -57,9 +57,24 @@ type PublishTarget struct {
 	ProjectID       uuid.UUID  `db:"project_id" json:"project_id"`
 	Subdomain       string     `db:"subdomain" json:"subdomain"`
 	Status          string     `db:"status" json:"status"`
+	CurrentReleaseID *uuid.UUID `db:"current_release_id" json:"current_release_id"`
 	LastPublishedAt *time.Time `db:"last_published_at" json:"last_published_at"`
 	CreatedAt       time.Time  `db:"created_at" json:"created_at"`
 	UpdatedAt       time.Time  `db:"updated_at" json:"updated_at"`
+}
+
+// PublishJob представляет задачу публикации
+type PublishJob struct {
+	ID             uuid.UUID  `db:"id" json:"id"`
+	ProjectID      uuid.UUID  `db:"project_id" json:"project_id"`
+	PublishTargetID *uuid.UUID `db:"publish_target_id" json:"publish_target_id"`
+	Status         string     `db:"status" json:"status"`
+	ReleaseID      *uuid.UUID `db:"release_id" json:"release_id"`
+	ErrorMessage   string     `db:"error_message" json:"error_message"`
+	StartedAt      *time.Time `db:"started_at" json:"started_at"`
+	CompletedAt    *time.Time `db:"completed_at" json:"completed_at"`
+	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt      time.Time  `db:"updated_at" json:"updated_at"`
 }
 
 // AnalyticsEvent представляет событие аналитики
@@ -97,6 +112,11 @@ const (
 	PublishStatusDraft     = "draft"
 	PublishStatusPublished = "published"
 	PublishStatusFailed    = "failed"
+
+	PublishJobStatusPending = "pending"
+	PublishJobStatusRunning = "running"
+	PublishJobStatusSuccess = "success"
+	PublishJobStatusFailed  = "failed"
 
 	MessageRoleUser      = "user"
 	MessageRoleAssistant = "assistant"

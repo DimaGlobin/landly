@@ -136,14 +136,16 @@ func CORSMiddleware(allowedOrigins, allowedMethods, allowedHeaders []string) gin
 		origin := c.Request.Header.Get("Origin")
 		if origin != "" {
 			if allowAll {
-				// Wildcard: reflect the requesting origin
-				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+				// Wildcard: reflect the requesting origin, but filter out container URLs
+				if !strings.Contains(origin, ".containers.yandexcloud.net") {
+					c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+				}
 			} else if _, ok := originSet[origin]; ok {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 			}
-		} else if len(allowedOrigins) > 0 && !allowAll {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigins[0])
 		}
+		// Don't set Access-Control-Allow-Origin if there's no Origin header
+		// This prevents leaking container URLs when Origin is missing
 
 		c.Writer.Header().Set("Vary", "Origin")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")

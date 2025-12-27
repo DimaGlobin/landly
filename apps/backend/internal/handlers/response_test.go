@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -90,7 +91,11 @@ func TestRespondError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
+			g := gin.Default()
+			c := gin.CreateTestContextOnly(w, g)
+			// Создаем Request для теста, чтобы избежать паники
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			c.Request = req
 
 			RespondError(c, tt.err)
 
@@ -166,9 +171,13 @@ func TestRespondUnauthorized(t *testing.T) {
 
 func TestRespondInternalError(t *testing.T) {
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	g := gin.Default()
+	c := gin.CreateTestContextOnly(w, g)
+	// Создаем Request для теста, чтобы избежать паники
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	c.Request = req
 
-	RespondInternalError(c)
+	RespondInternalError(c, fmt.Errorf("test error"))
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 

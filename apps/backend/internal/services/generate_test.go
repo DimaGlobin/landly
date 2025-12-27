@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	domain "github.com/landly/backend/internal/models"
+	"github.com/landly/backend/internal/schema"
 	"github.com/landly/backend/internal/services/mocks"
 )
 
@@ -35,8 +36,11 @@ func TestGenerateService_GenerateLanding_Success(t *testing.T) {
 	})).Return(nil).Once()
 	generatedSchema := `{"pages":[{"path":"/","title":"Home","blocks":[]}]} `
 	aiClient.On("GenerateLandingSchema", ctx, "Prompt", "https://pay").Return(generatedSchema, nil).Once()
-	projectRepo.On("UpdateSchema", ctx, projectID.String(), generatedSchema).Return(nil).Once()
-	projectRepo.On("GetByID", ctx, projectID.String()).Return(&domain.Project{ID: projectID, UserID: userID, SchemaJSON: generatedSchema}, nil).Once()
+	// Схема нормализуется перед сохранением, поэтому мок должен ожидать нормализованную схему
+	normalizedSchema, err := schema.NormalizeSchema(generatedSchema)
+	require.NoError(t, err)
+	projectRepo.On("UpdateSchema", ctx, projectID.String(), normalizedSchema).Return(nil).Once()
+	projectRepo.On("GetByID", ctx, projectID.String()).Return(&domain.Project{ID: projectID, UserID: userID, SchemaJSON: normalizedSchema}, nil).Once()
 	sessionRepo.On("Update", mock.Anything, mock.MatchedBy(func(session *domain.GenerationSession) bool {
 		return session.Status == domain.GenerationStatusCompleted
 	})).Return(nil)
@@ -44,7 +48,8 @@ func TestGenerateService_GenerateLanding_Success(t *testing.T) {
 	updated, err := svc.GenerateLanding(ctx, userID, projectID, "Prompt", "https://pay")
 	require.NoError(t, err)
 	require.NotNil(t, updated)
-	assert.Equal(t, generatedSchema, updated.SchemaJSON)
+	// Проверяем нормализованную схему, так как она нормализуется перед возвратом
+	assert.Equal(t, normalizedSchema, updated.SchemaJSON)
 
 	projectRepo.AssertExpectations(t)
 	sessionRepo.AssertExpectations(t)

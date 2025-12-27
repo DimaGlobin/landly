@@ -22,7 +22,20 @@ import (
 )
 
 func main() {
-	// Initialize logger
+	// Load configuration first (needed for logger config)
+	cfg, err := config.Load()
+	if err != nil {
+		// Fallback logger for config errors
+		logger.Init()
+		logger.Get().Fatal("failed to load config", zap.Error(err))
+	}
+
+	// Initialize logger with service metadata
+	logger.SetConfig(logger.Config{
+		Service: cfg.App.Name,
+		Version: cfg.App.Version,
+		Env:     cfg.App.Env,
+	})
 	logger.Init()
 	log := logger.Get()
 	defer func() {
@@ -31,16 +44,7 @@ func main() {
 		}
 	}()
 
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatal("failed to load config", zap.Error(err))
-	}
-
 	log.Info("starting application",
-		zap.String("env", cfg.App.Env),
-		zap.String("name", cfg.App.Name),
-		zap.String("version", cfg.App.Version),
 		zap.String("addr", cfg.Server.HTTP.Addr),
 		zap.Bool("bootstrap_mode", config.IsBootstrapMode()),
 	)
@@ -148,6 +152,7 @@ func startFullServer(cfg *config.Config, log logger.Logger) {
 	analyticsRepo := repositories.NewAnalyticsRepository(qb)
 	integrationRepo := repositories.NewIntegrationRepository(qb)
 	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
+	publishJobRepo := repositories.NewPublishJobRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	messageRepo := repositories.NewGenerationMessageRepository(qb)
 	schemaVersionRepo := repositories.NewSchemaVersionRepository(qb)
@@ -180,17 +185,20 @@ func startFullServer(cfg *config.Config, log logger.Logger) {
 
 	// Services
 	authService := services.NewAuthService(userRepo, cfg.Auth.JWT.Secret, cfg.Auth.JWT.AccessTokenTTL, cfg.Auth.JWT.RefreshTokenTTL)
-	projectService := services.NewProjectService(projectRepo)
+	userService := services.NewUserService(userRepo)
+	projectService := services.NewProjectService(projectRepo, publishTargetRepo, s3Client)
 	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, schemaVersionRepo, aiClient)
-	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
+	publicBaseProvider := services.NewStaticPublicBaseProvider(cfg.App.BaseURL)
+	publishService := services.NewPublishService(projectRepo, publishTargetRepo, publishJobRepo, userRepo, renderer, s3Client, publicBaseProvider)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
 	schemaVersionService := services.NewSchemaVersionService(schemaVersionRepo, projectRepo)
 	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, schemaVersionRepo, aiClient)
 
 	// HTTP handlers
 	authHandler := handlers.NewAuthHandler(authService)
-	projectHandler := handlers.NewProjectHandler(projectService, publishTargetRepo, cfg.App.BaseURL)
-	generateHandler := handlers.NewGenerateHandler(generateService, publishService, cfg.App.BaseURL)
+	userHandler := handlers.NewUserHandler(userService)
+	projectHandler := handlers.NewProjectHandler(projectService, publishTargetRepo, publicBaseProvider)
+	generateHandler := handlers.NewGenerateHandler(generateService, publishService, publicBaseProvider)
 	simpleGenerateHandler := handlers.NewSimpleGenerateHandler(simpleGenerateService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
 	schemaHandler := handlers.NewSchemaHandler(schemaVersionService)
@@ -203,6 +211,7 @@ func startFullServer(cfg *config.Config, log logger.Logger) {
 		simpleGenerateHandler,
 		analyticsHandler,
 		schemaHandler,
+		userHandler,
 		cfg.Auth.JWT.Secret,
 		cfg.Server.CORS.AllowedOrigins,
 		cfg.Server.CORS.AllowedMethods,

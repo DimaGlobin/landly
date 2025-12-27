@@ -1,6 +1,14 @@
-import axios, { AxiosInstance, AxiosError } from 'axios'
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+// Extend Axios config to support retry flag
+declare module 'axios' {
+  export interface InternalAxiosRequestConfig {
+    _retry?: boolean
+  }
+}
+
+// All API requests use relative paths - proxied via API Gateway in production
+// and via Next.js rewrites in development
 
 // Error codes that match backend domain.Error codes
 export type ApiErrorCode =
@@ -89,10 +97,13 @@ function parseApiError(error: AxiosError<ApiErrorResponse>): ApiError {
 
 class ApiClient {
   private client: AxiosInstance
+  private isRefreshing = false
+  private refreshSubscribers: Array<(token: string) => void> = []
 
   constructor() {
     this.client = axios.create({
-      baseURL: API_URL,
+      // Empty baseURL = relative paths, works with API Gateway proxy
+      baseURL: '',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -110,24 +121,68 @@ class ApiClient {
       return config
     })
 
-    // Handle errors uniformly
+    // Handle errors with automatic token refresh
     this.client.interceptors.response.use(
       (response) => response,
-      (error: AxiosError<ApiErrorResponse>) => {
+      async (error: AxiosError<ApiErrorResponse>) => {
+        const originalRequest = error.config
         const apiError = parseApiError(error)
 
-        // Auto logout on auth errors (except invalid credentials which is a login error)
-        if (apiError.shouldRedirectToLogin()) {
-          this.removeToken()
-          // Redirect to login if in browser and not already on auth page
-          if (typeof window !== 'undefined' && !window.location.pathname.includes('/login') && !window.location.pathname.includes('/signup')) {
-            window.location.href = '/login'
+        // Try to refresh token on TOKEN_EXPIRED
+        if (apiError.code === 'TOKEN_EXPIRED' && originalRequest && !originalRequest._retry) {
+          if (this.isRefreshing) {
+            // Wait for refresh to complete
+            return new Promise((resolve) => {
+              this.refreshSubscribers.push((token: string) => {
+                originalRequest.headers['X-Landly-Authorization'] = `Bearer ${token}`
+                resolve(this.client(originalRequest))
+              })
+            })
           }
+
+          originalRequest._retry = true
+          this.isRefreshing = true
+
+          try {
+            const newToken = await this.refreshToken()
+            if (newToken) {
+              // Retry original request with new token
+              originalRequest.headers['X-Landly-Authorization'] = `Bearer ${newToken}`
+              // Notify all waiting requests
+              this.refreshSubscribers.forEach((callback) => callback(newToken))
+              this.refreshSubscribers = []
+              return this.client(originalRequest)
+            }
+          } catch (refreshError) {
+            // Refresh failed - logout
+            this.handleLogout()
+            throw apiError
+          } finally {
+            this.isRefreshing = false
+          }
+        }
+
+        // For other auth errors, logout
+        if (apiError.shouldRedirectToLogin() && apiError.code !== 'TOKEN_EXPIRED') {
+          this.handleLogout()
         }
 
         throw apiError
       }
     )
+  }
+
+  private handleLogout(): void {
+    this.removeToken()
+    // Redirect to login if in browser and not already on auth page
+    // Use replace to avoid adding to history and prevent back button issues
+    if (typeof window !== 'undefined' && !window.location.pathname.includes('/auth/')) {
+      // Clear any redirect flags to prevent loops
+      try {
+        sessionStorage.removeItem('landly:auto-opened')
+      } catch {}
+      window.location.replace('/auth/login')
+    }
   }
 
   private getToken(): string | null {
@@ -137,9 +192,17 @@ class ApiClient {
     return null
   }
 
-  private setToken(token: string): void {
+  private getRefreshToken(): string | null {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', token)
+      return localStorage.getItem('refresh_token')
+    }
+    return null
+  }
+
+  private setTokens(accessToken: string, refreshToken: string): void {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('access_token', accessToken)
+      localStorage.setItem('refresh_token', refreshToken)
     }
   }
 
@@ -150,21 +213,56 @@ class ApiClient {
     }
   }
 
+  // Refresh access token using refresh token
+  private async refreshToken(): Promise<string | null> {
+    const refreshToken = this.getRefreshToken()
+    if (!refreshToken) {
+      return null
+    }
+
+    try {
+      // Use relative path - proxied via API Gateway
+      const { data } = await axios.post('/v1/auth/refresh', {
+        refresh_token: refreshToken,
+      })
+      
+      this.setTokens(data.access_token, data.refresh_token)
+      return data.access_token
+    } catch {
+      // Refresh token is invalid or expired
+      return null
+    }
+  }
+
   // Auth
   async signUp(email: string, password: string) {
     const { data } = await this.client.post('/v1/auth/signup', { email, password })
-    this.setToken(data.access_token)
+    this.setTokens(data.access_token, data.refresh_token)
     return data
   }
 
   async signIn(email: string, password: string) {
     const { data } = await this.client.post('/v1/auth/login', { email, password })
-    this.setToken(data.access_token)
+    this.setTokens(data.access_token, data.refresh_token)
     return data
   }
 
   logout() {
     this.removeToken()
+  }
+
+  // User Profile
+  async getUserProfile() {
+    const { data } = await this.client.get('/v1/user/profile')
+    return data
+  }
+
+  async updateUserProfile(email?: string, password?: string) {
+    const { data } = await this.client.put('/v1/user/profile', {
+      email,
+      password,
+    })
+    return data
   }
 
   // Projects

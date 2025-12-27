@@ -18,9 +18,10 @@ import (
 
 // Server представляет HTTP сервер приложения
 type Server struct {
-	engine *gin.Engine
-	config *config.Config
-	logger *zap.Logger
+	engine            *gin.Engine
+	config            *config.Config
+	logger            *zap.Logger
+	publicBaseProvider *services.StaticPublicBaseProvider
 }
 
 // NewServer создает новый сервер с инициализированными зависимостями
@@ -47,6 +48,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	analyticsRepo := repositories.NewAnalyticsRepository(qb)
 	integrationRepo := repositories.NewIntegrationRepository(qb)
 	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
+	publishJobRepo := repositories.NewPublishJobRepository(qb)
 	sessionRepo := repositories.NewGenerationSessionRepository(qb)
 	messageRepo := repositories.NewGenerationMessageRepository(qb)
 	schemaVersionRepo := repositories.NewSchemaVersionRepository(qb)
@@ -77,17 +79,20 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 
 	// Services
 	authService := services.NewAuthService(userRepo, cfg.Auth.JWT.Secret, cfg.Auth.JWT.AccessTokenTTL, cfg.Auth.JWT.RefreshTokenTTL)
-	projectService := services.NewProjectService(projectRepo)
+	userService := services.NewUserService(userRepo)
+	projectService := services.NewProjectService(projectRepo, publishTargetRepo, s3Client)
 	generateService := services.NewGenerateService(projectRepo, integrationRepo, sessionRepo, messageRepo, schemaVersionRepo, aiClient)
-	publishService := services.NewPublishService(projectRepo, publishTargetRepo, userRepo, renderer, s3Client, cfg.App.BaseURL)
+	publicBaseProvider := services.NewStaticPublicBaseProvider(cfg.App.BaseURL)
+	publishService := services.NewPublishService(projectRepo, publishTargetRepo, publishJobRepo, userRepo, renderer, s3Client, publicBaseProvider)
 	simpleGenerateService := services.NewSimpleGenerateService(projectRepo, schemaVersionRepo, aiClient)
 	analyticsService := services.NewAnalyticsService(projectRepo, analyticsRepo)
 	schemaVersionService := services.NewSchemaVersionService(schemaVersionRepo, projectRepo)
 
 	// HTTP handlers
 	authHandler := handlers.NewAuthHandler(authService)
-	projectHandler := handlers.NewProjectHandler(projectService, publishTargetRepo, cfg.App.BaseURL)
-	generateHandler := handlers.NewGenerateHandler(generateService, publishService, cfg.App.BaseURL)
+	userHandler := handlers.NewUserHandler(userService)
+	projectHandler := handlers.NewProjectHandler(projectService, publishTargetRepo, publicBaseProvider)
+	generateHandler := handlers.NewGenerateHandler(generateService, publishService, publicBaseProvider)
 	simpleGenerateHandler := handlers.NewSimpleGenerateHandler(simpleGenerateService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
 	schemaHandler := handlers.NewSchemaHandler(schemaVersionService)
@@ -100,6 +105,7 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 		simpleGenerateHandler,
 		analyticsHandler,
 		schemaHandler,
+		userHandler,
 		cfg.Auth.JWT.Secret,
 		cfg.Server.CORS.AllowedOrigins,
 		cfg.Server.CORS.AllowedMethods,
@@ -110,10 +116,20 @@ func NewServer(cfg *config.Config, logger *zap.Logger) (*Server, error) {
 	engine := router.Setup()
 
 	return &Server{
-		engine: engine,
-		config: cfg,
-		logger: logger,
+		engine:            engine,
+		config:            cfg,
+		logger:            logger,
+		publicBaseProvider: publicBaseProvider,
 	}, nil
+}
+
+// UpdateBaseURL обновляет BASE_URL для всех сервисов без перезапуска
+// Все новые запросы будут использовать новый BASE_URL для формирования публичных URL
+func (s *Server) UpdateBaseURL(newBaseURL string) {
+	if s.publicBaseProvider != nil {
+		s.publicBaseProvider.UpdateBase(newBaseURL)
+		s.logger.Info("BASE_URL updated", zap.String("new_base_url", newBaseURL))
+	}
 }
 
 // Start запускает HTTP сервер

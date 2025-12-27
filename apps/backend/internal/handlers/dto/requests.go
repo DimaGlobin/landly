@@ -1,5 +1,11 @@
 package dto
 
+// UpdateProfileRequest запрос на обновление профиля
+type UpdateProfileRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 // Auth requests
 type SignUpRequest struct {
 	Email    string `json:"email" binding:"required,email"`

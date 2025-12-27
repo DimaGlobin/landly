@@ -76,27 +76,27 @@ export function SchemaHistory({ projectId, onRevert }: SchemaHistoryProps) {
 
   return (
     <Card className="surface-card border-white/40 text-slate-900">
-      <CardHeader className="border-b border-white/50">
-        <CardTitle className="text-lg font-semibold">История изменений</CardTitle>
-        <CardDescription className="text-sm text-slate-600">Последние 10 версий схемы</CardDescription>
+      <CardHeader className="border-b border-white/50 px-0 pt-0">
+        <CardTitle className="text-base font-semibold sm:text-lg">История изменений</CardTitle>
+        <CardDescription className="text-xs text-slate-600 sm:text-sm">Последние 10 версий схемы</CardDescription>
       </CardHeader>
-      <CardContent className="max-h-[400px] space-y-3 overflow-y-auto py-4">
+      <CardContent className="max-h-[400px] space-y-2 overflow-y-auto py-3 sm:space-y-3 sm:py-4">
         {isLoading ? (
-          <div className="text-center text-sm text-slate-500">Загрузка...</div>
+          <div className="text-center text-xs text-slate-500 sm:text-sm">Загрузка...</div>
         ) : versions.length === 0 ? (
-          <div className="text-center text-sm text-slate-500">История пуста</div>
+          <div className="text-center text-xs text-slate-500 sm:text-sm">История пуста</div>
         ) : (
           versions.map((version) => (
             <div
               key={version.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white/50 px-4 py-3"
+              className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3"
             >
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                   <span className="text-xs font-semibold text-slate-600">
                     {sourceLabels[version.source] || version.source}
                   </span>
-                  <span className="text-xs text-slate-400">•</span>
+                  <span className="hidden text-xs text-slate-400 sm:inline">•</span>
                   <span className="text-xs text-slate-500">{formatDate(version.created_at)}</span>
                 </div>
                 <div className="mt-1 text-xs text-slate-400">
@@ -108,7 +108,7 @@ export function SchemaHistory({ projectId, onRevert }: SchemaHistoryProps) {
                 size="sm"
                 onClick={() => handleRevert(version.id)}
                 disabled={revertingId === version.id}
-                className="h-8 rounded-full border border-slate-200 bg-white/80 px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white"
+                className="h-8 shrink-0 rounded-full border border-slate-200 bg-white/80 px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white w-full sm:w-auto"
               >
                 {revertingId === version.id ? 'Откат...' : 'Откатить'}
               </Button>

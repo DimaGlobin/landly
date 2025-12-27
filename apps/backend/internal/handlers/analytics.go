@@ -83,7 +83,7 @@ func (h *AnalyticsHandler) GetStats(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 

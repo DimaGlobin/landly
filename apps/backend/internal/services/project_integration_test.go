@@ -6,6 +6,7 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -14,13 +15,47 @@ import (
 
 	domain "github.com/landly/backend/internal/models"
 	"github.com/landly/backend/internal/repositories"
+	"github.com/landly/backend/internal/storage/s3"
 	testhelpers "github.com/landly/backend/internal/testing"
 )
+
+func setupTestS3Client(t *testing.T) *s3.Client {
+	t.Helper()
+	
+	endpoint := os.Getenv("TEST_S3_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "localhost:9002" // Default test endpoint
+	}
+	
+	accessKey := os.Getenv("TEST_S3_ACCESS_KEY")
+	if accessKey == "" {
+		accessKey = "minioadmin"
+	}
+	
+	secretKey := os.Getenv("TEST_S3_SECRET_KEY")
+	if secretKey == "" {
+		secretKey = "minioadmin"
+	}
+	
+	useSSL := os.Getenv("TEST_S3_USE_SSL") == "true"
+	
+	client, err := s3.NewClient(s3.Config{
+		Endpoint:        endpoint,
+		AccessKeyID:     accessKey,
+		SecretAccessKey: secretKey,
+		BucketName:      "test-bucket",
+		UseSSL:          useSSL,
+	})
+	require.NoError(t, err, "Failed to create S3 client for tests")
+	return client
+}
 
 func TestProjectService_Integration_CRUD(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	projectRepo := repositories.NewProjectRepository(qb)
-	projectService := NewProjectService(projectRepo)
+	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
+	s3Client := setupTestS3Client(t)
+	projectService := NewProjectService(projectRepo, publishTargetRepo, s3Client)
 
 	ctx := context.Background()
 	// Create a real user first (foreign key requirement)
@@ -79,7 +114,9 @@ func TestProjectService_Integration_CRUD(t *testing.T) {
 func TestProjectService_Integration_AccessControl(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	projectRepo := repositories.NewProjectRepository(qb)
-	projectService := NewProjectService(projectRepo)
+	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
+	s3Client := setupTestS3Client(t)
+	projectService := NewProjectService(projectRepo, publishTargetRepo, s3Client)
 
 	ctx := context.Background()
 	// Create real users (foreign key requirement)
@@ -125,7 +162,9 @@ func TestProjectService_Integration_AccessControl(t *testing.T) {
 func TestProjectService_Integration_MultipleProjects(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	projectRepo := repositories.NewProjectRepository(qb)
-	projectService := NewProjectService(projectRepo)
+	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
+	s3Client := setupTestS3Client(t)
+	projectService := NewProjectService(projectRepo, publishTargetRepo, s3Client)
 
 	ctx := context.Background()
 	// Create a real user first (foreign key requirement)
@@ -151,7 +190,9 @@ func TestProjectService_Integration_MultipleProjects(t *testing.T) {
 func TestProjectService_Integration_ValidationErrors(t *testing.T) {
 	qb := testhelpers.SetupTestDB(t)
 	projectRepo := repositories.NewProjectRepository(qb)
-	projectService := NewProjectService(projectRepo)
+	publishTargetRepo := repositories.NewPublishTargetRepository(qb)
+	s3Client := setupTestS3Client(t)
+	projectService := NewProjectService(projectRepo, publishTargetRepo, s3Client)
 
 	ctx := context.Background()
 	// Create a real user first (foreign key requirement)

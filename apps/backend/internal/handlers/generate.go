@@ -12,6 +12,7 @@ import (
 	"github.com/landly/backend/internal/handlers/dto"
 	"github.com/landly/backend/internal/logger"
 	domain "github.com/landly/backend/internal/models"
+	"github.com/landly/backend/internal/services"
 	"go.uber.org/zap"
 )
 
@@ -32,19 +33,22 @@ type PublishService interface {
 	GetPublishedURL(ctx context.Context, userID, targetID string) (string, error)
 	UnpublishProject(ctx context.Context, userID, projectID uuid.UUID) error
 	ServePublished(ctx context.Context, subdomain, assetPath string) (io.ReadCloser, string, error)
+	// CDN support
+	HasCDN() bool
+	GetCDNURL(remotePath string) string
 }
 
 type GenerateHandler struct {
 	generateService GenerateService
 	publishService  PublishService
-	publicBaseURL   string
+	publicBaseProvider services.PublicBaseProvider
 }
 
-func NewGenerateHandler(generateService GenerateService, publishService PublishService, publicBaseURL string) *GenerateHandler {
+func NewGenerateHandler(generateService GenerateService, publishService PublishService, publicBaseProvider services.PublicBaseProvider) *GenerateHandler {
 	return &GenerateHandler{
 		generateService: generateService,
 		publishService:  publishService,
-		publicBaseURL:   strings.TrimRight(publicBaseURL, "/"),
+		publicBaseProvider: publicBaseProvider,
 	}
 }
 
@@ -81,14 +85,14 @@ func (h *GenerateHandler) Generate(c *gin.Context) {
 		Prompt:     req.Prompt,
 		PaymentURL: req.PaymentURL,
 	})
-	if err != nil {
-		if domainErr, ok := err.(*domain.Error); ok {
-			RespondError(c, domainErr)
+		if err != nil {
+			if domainErr, ok := err.(*domain.Error); ok {
+				RespondError(c, domainErr)
+				return
+			}
+			RespondInternalError(c, err)
 			return
 		}
-		RespondInternalError(c)
-		return
-	}
 
 	c.JSON(http.StatusOK, dto.GenerationSessionResponse{
 		ID:        session.ID,
@@ -230,7 +234,33 @@ func (h *GenerateHandler) Publish(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		// Log unexpected errors before returning 500
+		logger.WithContext(c.Request.Context()).Error("publish failed with unexpected error",
+			zap.String("project_id", projectID.String()),
+			zap.String("user_id", userID.String()),
+			zap.Error(err),
+		)
+		RespondInternalError(c, err)
+		return
+	}
+
+	if result == nil {
+		logger.LogInternalError(c.Request.Context(), "publish returned nil result",
+			fmt.Errorf("publish returned nil result"),
+			zap.String("project_id", projectID.String()),
+			zap.String("user_id", userID.String()),
+		)
+		RespondInternalErrorWithoutLogging(c)
+		return
+	}
+
+	if result.Subdomain == "" {
+		logger.LogInternalError(c.Request.Context(), "publish returned empty subdomain",
+			fmt.Errorf("publish returned empty subdomain"),
+			zap.String("project_id", projectID.String()),
+			zap.String("user_id", userID.String()),
+		)
+		RespondInternalErrorWithoutLogging(c)
 		return
 	}
 
@@ -239,16 +269,9 @@ func (h *GenerateHandler) Publish(c *gin.Context) {
 		publishedAt = result.LastPublishedAt.Format("2006-01-02T15:04:05Z")
 	}
 
-	baseURL := h.publicBaseURL
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
-
-	publicURL := fmt.Sprintf("%s/sites/%s", baseURL, result.Subdomain)
-
 	c.JSON(http.StatusOK, dto.PublishResponse{
 		Subdomain:   result.Subdomain,
-		PublicURL:   publicURL,
+		Status:      string(result.Status),
 		PublishedAt: publishedAt,
 	})
 }
@@ -278,7 +301,7 @@ func (h *GenerateHandler) Unpublish(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 
@@ -286,37 +309,131 @@ func (h *GenerateHandler) Unpublish(c *gin.Context) {
 }
 
 // ServePublished обрабатывает запросы на опубликованный лендинг
+// CDN-first: если CDN настроен, делает редирект на CDN, иначе отдает файл через backend
 func (h *GenerateHandler) ServePublished(c *gin.Context) {
+	log := logger.WithContext(c.Request.Context())
+	
 	slug := c.Param("slug")
 	asset := strings.TrimPrefix(c.Param("path"), "/")
+	
+	log.Info("ServePublished request",
+		zap.String("slug", slug),
+		zap.String("asset", asset),
+		zap.String("method", c.Request.Method),
+		zap.String("path", c.Request.URL.Path),
+		zap.String("query", c.Request.URL.RawQuery))
 
 	if slug == "" {
+		log.Warn("empty slug in request")
 		c.Status(http.StatusNotFound)
 		return
 	}
 
+	// Проверяем наличие publishService
+	if h.publishService == nil {
+		log.Error("publishService is nil")
+		c.String(http.StatusInternalServerError, "Internal server error: publish service not initialized")
+		return
+	}
+
+	// CDN-first serving: если CDN настроен, делаем редирект
+	hasCDN := h.publishService.HasCDN()
+	log.Debug("CDN check",
+		zap.Bool("has_cdn", hasCDN))
+	
+	if hasCDN {
+		// Формируем путь для CDN
+		basePath := fmt.Sprintf("sites/%s", slug)
+		if asset != "" {
+			basePath = fmt.Sprintf("sites/%s/%s", slug, asset)
+		}
+		cdnURL := h.publishService.GetCDNURL(basePath)
+		log.Debug("CDN URL generation",
+			zap.String("base_path", basePath),
+			zap.String("cdn_url", cdnURL))
+		
+		if cdnURL != "" {
+			log.Info("redirecting to CDN",
+				zap.String("cdn_url", cdnURL))
+			c.Redirect(http.StatusMovedPermanently, cdnURL)
+			return
+		}
+		log.Warn("CDN enabled but URL is empty, falling back to backend")
+	}
+
+	// Fallback: отдаем файл через backend
+	log.Debug("serving from backend",
+		zap.String("slug", slug),
+		zap.String("asset", asset))
+	
 	reader, contentType, err := h.publishService.ServePublished(c.Request.Context(), slug, asset)
 	if err != nil {
 		if domainErr, ok := err.(*domain.Error); ok {
+			// Логируем доменную ошибку с контекстом
+			logger.LogDomainError(c.Request.Context(), "failed to serve published asset",
+				domainErr,
+				zap.String("slug", slug),
+				zap.String("asset", asset),
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+			)
 			c.String(domainErr.HTTPStatus(), domainErr.Message)
 			return
 		}
-		// Don't expose internal error details
-		logger.WithContext(c.Request.Context()).Error("failed to serve published asset", zap.Error(err))
+		
+		// Логируем внутреннюю ошибку с максимальным контекстом
+		logger.LogInternalError(c.Request.Context(), "failed to serve published asset",
+			err,
+			zap.String("slug", slug),
+			zap.String("asset", asset),
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+		)
 		c.String(http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	defer reader.Close()
+	
+	// Проверяем, что reader не nil перед использованием
+	if reader == nil {
+		log.Error("ServePublished returned nil reader",
+			zap.String("slug", slug),
+			zap.String("asset", asset),
+			zap.String("content_type", contentType))
+		c.String(http.StatusNotFound, "Not found")
+		return
+	}
+	
+	log.Debug("file found, serving",
+		zap.String("slug", slug),
+		zap.String("asset", asset),
+		zap.String("content_type", contentType))
+	
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			log.Warn("failed to close reader", zap.Error(closeErr))
+		}
+	}()
 
 	if contentType != "" {
 		c.Header("Content-Type", contentType)
+		log.Debug("set content-type header", zap.String("content_type", contentType))
 	}
 
-	if _, err := io.Copy(c.Writer, reader); err != nil {
-		if errHandler := c.Error(err); errHandler != nil {
-			logger.WithContext(c.Request.Context()).Error("failed to write published asset", zap.Error(errHandler))
-		}
+	bytesWritten, err := io.Copy(c.Writer, reader)
+	if err != nil {
+		log.Error("failed to write published asset",
+			zap.String("slug", slug),
+			zap.String("asset", asset),
+			zap.Int64("bytes_written", bytesWritten),
+			zap.Error(err))
+		return
 	}
+	
+	log.Info("file served successfully",
+		zap.String("slug", slug),
+		zap.String("asset", asset),
+		zap.Int64("bytes_written", bytesWritten),
+		zap.String("content_type", contentType))
 }
 
 func (h *GenerateHandler) ServePublishedLegacy(c *gin.Context) {
@@ -371,7 +488,7 @@ func respondWithDomainError(c *gin.Context, err error) bool {
 	if domainErr, ok := err.(*domain.Error); ok {
 		RespondError(c, domainErr)
 	} else {
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 	}
 
 	return true

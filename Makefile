@@ -1,4 +1,4 @@
-.PHONY: help dev run down migrate migrate-down migration migration-checksums migration-validate migration-status migration-dry-run seed test test-backend test-frontend build clean
+.PHONY: help dev run down migrate migrate-down migration migration-checksums migration-validate migration-status migration-dry-run seed test test-backend test-backend-unit test-backend-integration test-frontend build clean
 
 ROOT_DIR := $(shell pwd)
 
@@ -8,25 +8,30 @@ help: ## Show this help
 dev: ## Start all services in development mode
 	@$(ROOT_DIR)/scripts/bootstrap-env.sh
 	docker-compose -f deploy/docker/docker-compose.yml up --build -d
-	@echo "Services started:"
-	@echo "  - Frontend: http://localhost:3000"
-	@echo "  - Backend API: http://localhost:8080"
-	@echo "  - MinIO Console: http://localhost:9001"
-	@echo "  - PostgreSQL: localhost:5432"
-	@echo "  - Redis: localhost:6379"
-	@echo "--- Tailing backend logs (press Ctrl+C to stop) ---"
-	docker-compose -f deploy/docker/docker-compose.yml logs -f backend
+	@echo ""
+	@echo "🚀 Services started!"
+	@echo ""
+	@echo "  📱 App:           http://localhost"
+	@echo "  🔌 API:           http://localhost/v1/..."
+	@echo "  💾 MinIO Console: http://localhost:9001"
+	@echo "  🐘 PostgreSQL:    localhost:5432"
+	@echo "  📮 Redis:         localhost:6379"
+	@echo ""
+	@echo "--- Tailing logs (press Ctrl+C to stop) ---"
+	docker-compose -f deploy/docker/docker-compose.yml logs -f nginx backend
 
 run: ## Run tests in container, then start development services
 	COMPOSE_PROFILES=test docker-compose -f deploy/docker/docker-compose.yml run --rm --no-deps --entrypoint "" backend-builder sh -c "go test ./..."
 	COMPOSE_PROFILES=test docker-compose -f deploy/docker/docker-compose.yml run --rm --no-deps frontend-tester
 	docker-compose -f deploy/docker/docker-compose.yml up --build -d
-	@echo "Services started:"
-	@echo "  - Frontend: http://localhost:3000"
-	@echo "  - Backend API: http://localhost:8080"
-	@echo "  - MinIO Console: http://localhost:9001"
-	@echo "  - PostgreSQL: localhost:5432"
-	@echo "  - Redis: localhost:6379"
+	@echo ""
+	@echo "🚀 Services started!"
+	@echo ""
+	@echo "  📱 App:           http://localhost"
+	@echo "  🔌 API:           http://localhost/v1/..."
+	@echo "  💾 MinIO Console: http://localhost:9001"
+	@echo "  🐘 PostgreSQL:    localhost:5432"
+	@echo "  📮 Redis:         localhost:6379"
 
 down: ## Stop all services
 	docker-compose -f deploy/docker/docker-compose.yml down
@@ -85,17 +90,15 @@ seed: ## Load seed data into database
 test: test-backend test-frontend ## Run all tests
 	@$(MAKE) clean
 
-test-backend: ## Run backend tests
+test-backend: test-backend-unit test-backend-integration ## Run all backend tests (unit + integration)
+
+test-backend-unit: ## Run backend unit tests only
 	@set -euo pipefail; \
 	trap 'cd $(ROOT_DIR) && $(MAKE) clean' EXIT; \
+	echo "Running backend unit tests..."; \
 	cd $(ROOT_DIR)/apps/backend && go test -v -race -cover ./...
 
-test-frontend: ## Run frontend tests
-	@set -euo pipefail; \
-	trap 'cd $(ROOT_DIR) && $(MAKE) clean' EXIT; \
-	cd $(ROOT_DIR)/apps/frontend && npm test
-
-test-integration: ## Run integration tests with docker-compose (verbose)
+test-backend-integration: ## Run backend integration tests with docker-compose
 	@set -euo pipefail; \
 	trap 'cd $(ROOT_DIR) && $(MAKE) clean' EXIT; \
 	echo "Starting integration test infrastructure..."; \
@@ -119,6 +122,13 @@ test-integration: ## Run integration tests with docker-compose (verbose)
 	echo ""; \
 	echo "Stopping integration test infrastructure..."; \
 	docker-compose -f $(ROOT_DIR)/deploy/docker/docker-compose.test.yml down
+
+test-integration: test-backend-integration ## Alias for test-backend-integration (deprecated, use test-backend-integration)
+
+test-frontend: ## Run frontend tests
+	@set -euo pipefail; \
+	trap 'cd $(ROOT_DIR) && $(MAKE) clean' EXIT; \
+	cd $(ROOT_DIR)/apps/frontend && npm test
 
 test-e2e: ## Run end-to-end tests
 	@set -euo pipefail; \

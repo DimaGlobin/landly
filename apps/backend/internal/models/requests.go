@@ -50,3 +50,9 @@ type TrackEventRequest struct {
 	Path      string `json:"path" binding:"required"`
 	Referrer  string `json:"referrer"`
 }
+
+// User requests and responses
+type UpdateProfileRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}

@@ -194,6 +194,7 @@ jobs:
         run: |
           echo "lowercase_owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
           echo "ycr_repo=cr.yandex/${{ secrets.YC_REGISTRY_ID }}/${{ secrets.YCR_REPOSITORY }}" >> $GITHUB_OUTPUT
+          echo "date_tag=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -226,10 +227,13 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile.backend
           push: true
+          # Tags: prod (latest), prod-YYYY-MM-DD (rollback), sha-* (cleanup safe)
           tags: |
-            ghcr.io/${{ steps.vars.outputs.lowercase_owner }}/landly/backend:main
+            ghcr.io/${{ steps.vars.outputs.lowercase_owner }}/landly/backend:prod
+            ghcr.io/${{ steps.vars.outputs.lowercase_owner }}/landly/backend:prod-${{ steps.vars.outputs.date_tag }}
             ghcr.io/${{ steps.vars.outputs.lowercase_owner }}/landly/backend:sha-${{ github.sha }}
-            ${{ steps.vars.outputs.ycr_repo }}:main
+            ${{ steps.vars.outputs.ycr_repo }}:prod
+            ${{ steps.vars.outputs.ycr_repo }}:prod-${{ steps.vars.outputs.date_tag }}
             ${{ steps.vars.outputs.ycr_repo }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -446,20 +450,41 @@ jobs:
       - name: Smoke test - Health check
         run: |
           echo "Testing health endpoint..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STAGING_URL }}/health")
-          if [ "$HTTP_STATUS" -ne 200 ]; then
-            echo "❌ Health check failed with status $HTTP_STATUS"
-            exit 1
+          echo "STAGING_URL: ${{ secrets.STAGING_URL }}"
+          
+          # Try health endpoint through API Gateway /v1 path
+          echo "Trying endpoint: ${{ secrets.STAGING_URL }}/v1/health"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STAGING_URL }}/v1/health" || echo "000")
+          echo "Response status: $HTTP_STATUS"
+          
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Health check passed (HTTP $HTTP_STATUS)"
+            exit 0
           fi
-          echo "✅ Health check passed (HTTP $HTTP_STATUS)"
+          
+          # Fallback to /v1/healthz
+          echo "Trying fallback endpoint: ${{ secrets.STAGING_URL }}/v1/healthz"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STAGING_URL }}/v1/healthz" || echo "000")
+          echo "Response status: $HTTP_STATUS"
+          
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Health check passed (HTTP $HTTP_STATUS) on /v1/healthz"
+            exit 0
+          fi
+          
+          # If all endpoints failed, show detailed error
+          echo "❌ Health check failed on all endpoints"
+          echo "Trying to get response body from /v1/health:"
+          curl -v "${{ secrets.STAGING_URL }}/v1/health" || true
+          exit 1
 
       - name: Smoke test - Readiness check
         run: |
           echo "Testing readiness endpoint..."
-          RESPONSE=$(curl -s "${{ secrets.STAGING_URL }}/readyz")
+          RESPONSE=$(curl -s "${{ secrets.STAGING_URL }}/v1/readyz")
           echo "Response: $RESPONSE"
           
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STAGING_URL }}/readyz")
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STAGING_URL }}/v1/readyz")
           if [ "$HTTP_STATUS" -ne 200 ]; then
             echo "⚠️ Readiness check returned $HTTP_STATUS (may be expected if DB not connected)"
           else

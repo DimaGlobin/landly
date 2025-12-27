@@ -12,9 +12,16 @@ export interface Project {
 
 export interface ProjectPublishInfo {
   status: 'draft' | 'published' | 'failed'
-  public_url: string
   subdomain: string
   last_published_at?: string
+}
+
+// Формируем публичный URL на фронтенде
+// Использует NEXT_PUBLIC_SITE_BASE_URL из переменных окружения
+// Canonical URL: /sites/{subdomain} (без /v1)
+export function getPublicURL(subdomain: string): string {
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_BASE_URL || 'https://landlify.ru'
+  return `${baseUrl}/sites/${subdomain}`
 }
 
 export interface ChatSession {
@@ -99,5 +106,20 @@ export interface AnalyticsStats {
   total_cta_clicks: number
   total_pay_clicks: number
   unique_visitors: number
+}
+
+// User types
+export interface UserProfile {
+  id: string
+  email: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Subscription {
+  plan: 'free' | 'pro' | 'enterprise'
+  status: 'active' | 'expired' | 'cancelled'
+  expires_at?: string
+  features: string[]
 }
 

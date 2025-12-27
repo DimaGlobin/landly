@@ -22,6 +22,5 @@ jest.mock('next/navigation', () => ({
   },
 }))
 
-// Mock environment variables
-process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8080'
+// API uses relative paths, no env variables needed
 

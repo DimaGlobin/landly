@@ -9,8 +9,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/landly/backend/internal/logger"
-	"github.com/landly/backend/internal/schema"
+	"github.com/landly/backend/internal/metrics"
 	domain "github.com/landly/backend/internal/models"
+	"github.com/landly/backend/internal/schema"
 	"go.uber.org/zap"
 )
 
@@ -87,17 +88,22 @@ func (s *GenerateService) GenerateSite(ctx context.Context, userID, projectID st
 		zap.String("payment_url", req.PaymentURL),
 	)
 
+	genStart := time.Now()
 	updatedProject, err := s.GenerateLanding(context.Background(), userUUID, projectUUID, req.Prompt, req.PaymentURL)
+	genDuration := time.Since(genStart).Seconds()
+
 	if err != nil {
 		log.Error("generation failed", zap.Error(err))
 		session.Status = domain.GenerationStatusFailed
 		session.CompletedAt = ptrTime(time.Now())
+		metrics.RecordGeneration("landing", "failed", genDuration)
 		return session, domain.ErrInternal.WithError(err)
 	}
 
 	log.Info("generation completed successfully")
 	session.Status = domain.GenerationStatusCompleted
 	session.CompletedAt = ptrTime(time.Now())
+	metrics.RecordGeneration("landing", "success", genDuration)
 	if updatedProject != nil {
 		session.SchemaJSON = updatedProject.SchemaJSON
 	}
@@ -220,6 +226,19 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 		return nil, domain.ErrBadRequest.WithMessage(fmt.Sprintf("invalid schema: %v", err))
 	}
 
+	// Нормализуем схему перед сохранением, чтобы тема всегда была установлена
+	normalizedSchemaJSON, err := schema.NormalizeSchema(schemaJSON)
+	if err != nil {
+		log.Warn("failed to normalize schema after generation, using original",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration))
+		normalizedSchemaJSON = schemaJSON // Fallback на оригинальную схему
+	} else {
+		log.Debug("schema normalized successfully after generation",
+			zap.Int("original_length", len(schemaJSON)),
+			zap.Int("normalized_length", len(normalizedSchemaJSON)))
+	}
+
 	// Сохраняем текущую схему как версию перед обновлением
 	if project.SchemaJSON != "" && s.versionRepo != nil {
 		currentVersion := domain.NewSchemaVersion(
@@ -234,9 +253,9 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 		}
 	}
 
-	// Сохраняем схему в проект
-	log.Info("saving schema to project")
-	if err := s.projectRepo.UpdateSchema(ctx, projectID.String(), schemaJSON); err != nil {
+	// Сохраняем нормализованную схему в проект
+	log.Info("saving normalized schema to project")
+	if err := s.projectRepo.UpdateSchema(ctx, projectID.String(), normalizedSchemaJSON); err != nil {
 		log.Error("failed to save schema to project",
 			zap.Error(err),
 			zap.Duration("duration_ms", duration),
@@ -246,11 +265,12 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 	}
 
 	// Сохраняем новую версию (если versionRepo доступен)
+	// Используем нормализованную схему для версии
 	if s.versionRepo != nil {
 		newVersion := domain.NewSchemaVersion(
 			projectID,
 			userID,
-			schemaJSON,
+			normalizedSchemaJSON,
 			domain.SchemaVersionSourceGenerate,
 		)
 		if err := s.versionRepo.Create(ctx, newVersion); err != nil {
@@ -264,7 +284,7 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 	)
 
 	session.Status = domain.GenerationStatusCompleted
-	session.SchemaJSON = schemaJSON
+	session.SchemaJSON = normalizedSchemaJSON // Используем нормализованную схему
 	session.CompletedAt = ptrTime(time.Now())
 
 	// Получаем обновлённый проект
@@ -277,6 +297,7 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 }
 
 // GetPreview получает превью проекта
+// Схема нормализуется перед возвратом для консистентности с publish
 func (s *GenerateService) GetPreview(ctx context.Context, userID, projectID uuid.UUID) (map[string]interface{}, error) {
 	// Проверка доступа к проекту
 	project, err := s.projectRepo.GetByID(ctx, projectID.String())
@@ -288,12 +309,22 @@ func (s *GenerateService) GetPreview(ctx context.Context, userID, projectID uuid
 		return nil, domain.ErrForbidden.WithMessage("access denied")
 	}
 
-	// Парсим схему
+	// Нормализуем схему перед возвратом для консистентности с publish
+	if project.SchemaJSON == "" {
+		return make(map[string]interface{}), nil
+	}
+
+	normalizedSchemaJSON, err := schema.NormalizeSchema(project.SchemaJSON)
+	if err != nil {
+		// Если нормализация не удалась, возвращаем оригинальную схему
+		// (может быть невалидной, но лучше показать что-то, чем ничего)
+		normalizedSchemaJSON = project.SchemaJSON
+	}
+
+	// Парсим нормализованную схему
 	var schema map[string]interface{}
-	if project.SchemaJSON != "" {
-		if err := json.Unmarshal([]byte(project.SchemaJSON), &schema); err != nil {
-			return nil, domain.ErrInternal.WithMessage("invalid schema format")
-		}
+	if err := json.Unmarshal([]byte(normalizedSchemaJSON), &schema); err != nil {
+		return nil, domain.ErrInternal.WithMessage("invalid schema format")
 	}
 
 	return schema, nil
@@ -399,6 +430,19 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		return nil, nil, domain.ErrBadRequest.WithMessage(fmt.Sprintf("invalid schema: %v", err))
 	}
 
+	// Нормализуем схему перед сохранением, чтобы тема всегда была установлена
+	normalizedSchemaJSON, err := schema.NormalizeSchema(schemaJSON)
+	if err != nil {
+		log.Warn("failed to normalize schema after chat generation, using original",
+			zap.Error(err),
+			zap.Duration("duration_ms", duration))
+		normalizedSchemaJSON = schemaJSON // Fallback на оригинальную схему
+	} else {
+		log.Debug("schema normalized successfully after chat generation",
+			zap.Int("original_length", len(schemaJSON)),
+			zap.Int("normalized_length", len(normalizedSchemaJSON)))
+	}
+
 	// Сохраняем текущую схему как версию перед обновлением
 	if project.SchemaJSON != "" && s.versionRepo != nil {
 		currentVersion := domain.NewSchemaVersion(
@@ -413,7 +457,7 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		}
 	}
 
-	if err := s.projectRepo.UpdateSchema(ctx, project.ID.String(), schemaJSON); err != nil {
+	if err := s.projectRepo.UpdateSchema(ctx, project.ID.String(), normalizedSchemaJSON); err != nil {
 		log.Error("failed to persist generated schema",
 			zap.Error(err),
 			zap.Duration("duration_ms", duration),

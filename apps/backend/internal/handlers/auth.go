@@ -49,7 +49,7 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *AuthHandler) SignIn(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, dto.AuthResponse{
@@ -115,7 +115,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 			RespondError(c, domainErr)
 			return
 		}
-		RespondInternalError(c)
+		RespondInternalError(c, err)
 		return
 	}
 

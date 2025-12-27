@@ -6,6 +6,7 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/landly/backend/internal/logger"
 	domain "github.com/landly/backend/internal/models"
 	"github.com/landly/backend/internal/query"
 )
@@ -33,8 +34,8 @@ func NewPublishTargetRepository(qb *query.Builder) PublishTargetRepository {
 // Create создает цель публикации
 func (r *publishTargetRepository) Create(ctx context.Context, target *domain.PublishTarget) error {
 	query := r.qb.Insert("publish_targets").
-		Columns("id", "project_id", "subdomain", "status", "last_published_at", "created_at", "updated_at").
-		Values(target.ID, target.ProjectID, target.Subdomain, target.Status, target.LastPublishedAt, target.CreatedAt, target.UpdatedAt)
+		Columns("id", "project_id", "subdomain", "status", "current_release_id", "last_published_at", "created_at", "updated_at").
+		Values(target.ID, target.ProjectID, target.Subdomain, target.Status, target.CurrentReleaseID, target.LastPublishedAt, target.CreatedAt, target.UpdatedAt)
 
 	_, err := r.qb.Execute(query)
 	return err
@@ -47,18 +48,23 @@ func (r *publishTargetRepository) GetByID(ctx context.Context, id string) (*doma
 		return nil, domain.ErrBadRequest.WithMessage("invalid target ID format")
 	}
 
-	query := r.qb.Select("id", "project_id", "subdomain", "status", "last_published_at", "created_at", "updated_at").
+	query := r.qb.Select("id", "project_id", "subdomain", "status", "current_release_id", "last_published_at", "created_at", "updated_at").
 		From("publish_targets").
 		Where(squirrel.Eq{"id": targetID})
 
 	row := r.qb.QueryRow(query)
 
 	var target domain.PublishTarget
-	err = row.Scan(&target.ID, &target.ProjectID, &target.Subdomain, &target.Status, &target.LastPublishedAt, &target.CreatedAt, &target.UpdatedAt)
+	err = row.Scan(&target.ID, &target.ProjectID, &target.Subdomain, &target.Status, &target.CurrentReleaseID, &target.LastPublishedAt, &target.CreatedAt, &target.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrNotFound.WithMessage("target not found")
 		}
+		// Логируем SQL ошибку с максимальным контекстом
+		logger.LogSQLError(ctx, "GetByID", err,
+			"SELECT id, project_id, subdomain, status, current_release_id, last_published_at, created_at, updated_at FROM publish_targets WHERE id = ?",
+			map[string]interface{}{"target_id": id},
+		)
 		return nil, domain.ErrInternal.WithError(err)
 	}
 
@@ -66,13 +72,15 @@ func (r *publishTargetRepository) GetByID(ctx context.Context, id string) (*doma
 }
 
 // GetByProjectID получает цель по ID проекта
+// Note: After migration 005, project_id has UNIQUE constraint (1:1 relationship)
+// OrderBy and Limit are kept for backward compatibility during migration
 func (r *publishTargetRepository) GetByProjectID(ctx context.Context, projectID string) (*domain.PublishTarget, error) {
 	projectUUID, err := uuid.Parse(projectID)
 	if err != nil {
 		return nil, domain.ErrBadRequest.WithMessage("invalid project ID format")
 	}
 
-	query := r.qb.Select("id", "project_id", "subdomain", "status", "last_published_at", "created_at", "updated_at").
+	query := r.qb.Select("id", "project_id", "subdomain", "status", "current_release_id", "last_published_at", "created_at", "updated_at").
 		From("publish_targets").
 		Where(squirrel.Eq{"project_id": projectUUID}).
 		OrderBy("updated_at DESC").
@@ -81,11 +89,16 @@ func (r *publishTargetRepository) GetByProjectID(ctx context.Context, projectID 
 	row := r.qb.QueryRow(query)
 
 	var target domain.PublishTarget
-	err = row.Scan(&target.ID, &target.ProjectID, &target.Subdomain, &target.Status, &target.LastPublishedAt, &target.CreatedAt, &target.UpdatedAt)
+	err = row.Scan(&target.ID, &target.ProjectID, &target.Subdomain, &target.Status, &target.CurrentReleaseID, &target.LastPublishedAt, &target.CreatedAt, &target.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrNotFound.WithMessage("target not found")
 		}
+		// Логируем SQL ошибку с максимальным контекстом
+		logger.LogSQLError(ctx, "GetByProjectID", err,
+			"SELECT id, project_id, subdomain, status, current_release_id, last_published_at, created_at, updated_at FROM publish_targets WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1",
+			map[string]interface{}{"project_id": projectID},
+		)
 		return nil, domain.ErrInternal.WithError(err)
 	}
 
@@ -94,18 +107,23 @@ func (r *publishTargetRepository) GetByProjectID(ctx context.Context, projectID 
 
 // GetBySubdomain получает цель по поддомену
 func (r *publishTargetRepository) GetBySubdomain(ctx context.Context, subdomain string) (*domain.PublishTarget, error) {
-	query := r.qb.Select("id", "project_id", "subdomain", "status", "last_published_at", "created_at", "updated_at").
+	query := r.qb.Select("id", "project_id", "subdomain", "status", "current_release_id", "last_published_at", "created_at", "updated_at").
 		From("publish_targets").
 		Where(squirrel.Eq{"subdomain": subdomain})
 
 	row := r.qb.QueryRow(query)
 
 	var target domain.PublishTarget
-	err := row.Scan(&target.ID, &target.ProjectID, &target.Subdomain, &target.Status, &target.LastPublishedAt, &target.CreatedAt, &target.UpdatedAt)
+	err := row.Scan(&target.ID, &target.ProjectID, &target.Subdomain, &target.Status, &target.CurrentReleaseID, &target.LastPublishedAt, &target.CreatedAt, &target.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrNotFound.WithMessage("target not found")
 		}
+		// Логируем SQL ошибку с максимальным контекстом
+		logger.LogSQLError(ctx, "GetBySubdomain", err,
+			"SELECT id, project_id, subdomain, status, current_release_id, last_published_at, created_at, updated_at FROM publish_targets WHERE subdomain = ?",
+			map[string]interface{}{"subdomain": subdomain},
+		)
 		return nil, domain.ErrInternal.WithError(err)
 	}
 
@@ -117,6 +135,7 @@ func (r *publishTargetRepository) Update(ctx context.Context, target *domain.Pub
 	query := r.qb.Update("publish_targets").
 		Set("status", target.Status).
 		Set("subdomain", target.Subdomain).
+		Set("current_release_id", target.CurrentReleaseID).
 		Set("last_published_at", target.LastPublishedAt).
 		Set("updated_at", target.UpdatedAt).
 		Where(squirrel.Eq{"id": target.ID})

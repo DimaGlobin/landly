@@ -94,3 +94,17 @@ func (r *schemaVersionRepository) GetByProjectID(ctx context.Context, projectID 
 	return versions, nil
 }
 
+// Delete удаляет версию схемы
+func (r *schemaVersionRepository) Delete(ctx context.Context, id string) error {
+	versionID, err := uuid.Parse(id)
+	if err != nil {
+		return domain.ErrBadRequest.WithMessage("invalid version ID format")
+	}
+
+	query := r.qb.Delete("project_schema_versions").
+		Where(squirrel.Eq{"id": versionID})
+
+	_, err = r.qb.Execute(query)
+	return err
+}
+

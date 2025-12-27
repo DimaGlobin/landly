@@ -10,6 +10,13 @@ import (
 
 type loggerContextKey struct{}
 
+// Config holds logger configuration
+type Config struct {
+	Service string
+	Version string
+	Env     string
+}
+
 // Logger интерфейс для логгирования
 type Logger interface {
 	Debug(msg string, fields ...zap.Field)
@@ -28,24 +35,58 @@ type logger struct {
 	zap *zap.Logger
 }
 
+// global config for logger
+var globalConfig = Config{
+	Service: "landly-backend",
+	Version: "unknown",
+	Env:     "production",
+}
+
+// SetConfig sets global logger configuration
+func SetConfig(cfg Config) {
+	globalConfig = cfg
+}
+
 // New создает новый логгер
 func New() Logger {
-	config := zap.NewProductionConfig()
+	return NewWithConfig(globalConfig)
+}
 
-	// Настраиваем уровни логгирования
-	config.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
+// NewWithConfig создает новый логгер с конфигурацией
+func NewWithConfig(cfg Config) Logger {
+	var zapConfig zap.Config
 
-	// Настраиваем формат для разработки
-	if os.Getenv("ENV") == "development" {
-		config = zap.NewDevelopmentConfig()
-		config.EncoderConfig.TimeKey = "timestamp"
-		config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	env := cfg.Env
+	if env == "" {
+		env = os.Getenv("LANDLY_APP_ENV")
+		if env == "" {
+			env = os.Getenv("ENV")
+		}
 	}
 
-	zapLogger, err := config.Build()
+	if env == "development" {
+		zapConfig = zap.NewDevelopmentConfig()
+		zapConfig.EncoderConfig.TimeKey = "timestamp"
+		zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	} else {
+		zapConfig = zap.NewProductionConfig()
+		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
+		// Ensure consistent timestamp format in production
+		zapConfig.EncoderConfig.TimeKey = "timestamp"
+		zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	}
+
+	zapLogger, err := zapConfig.Build()
 	if err != nil {
 		panic("failed to initialize logger: " + err.Error())
 	}
+
+	// Add service metadata fields
+	zapLogger = zapLogger.With(
+		zap.String("service", cfg.Service),
+		zap.String("version", cfg.Version),
+		zap.String("env", env),
+	)
 
 	return &logger{zap: zapLogger}
 }
