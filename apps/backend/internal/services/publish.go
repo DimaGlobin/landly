@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -533,15 +534,19 @@ func (s *PublishService) ServePublished(ctx context.Context, subdomain, assetPat
 		log.Debug("empty asset path, defaulting to index.html")
 	}
 
-	originalCleanPath := cleanPath
-	cleanPath = filepath.Clean(cleanPath)
-	log.Debug("path cleaning",
-		zap.String("original", originalCleanPath),
-		zap.String("cleaned", cleanPath))
+	// Reject path traversal before normalization
+	if strings.Contains(assetPath, "..") {
+		log.Warn("path traversal attempt detected", zap.String("asset_path", assetPath))
+		return nil, "", domain.ErrForbidden
+	}
 
-	if strings.Contains(cleanPath, "..") {
-		log.Warn("path traversal attempt detected",
-			zap.String("clean_path", cleanPath))
+	// Normalize path (use path package for URL-style forward slashes)
+	cleanPath = path.Clean("/" + cleanPath)
+	cleanPath = strings.TrimPrefix(cleanPath, "/")
+
+	// Reject if Clean produced a path that escapes (starts with ..)
+	if cleanPath == "" || strings.HasPrefix(cleanPath, "..") {
+		log.Warn("invalid path after clean", zap.String("asset_path", assetPath), zap.String("clean_path", cleanPath))
 		return nil, "", domain.ErrForbidden
 	}
 

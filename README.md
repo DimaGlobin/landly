@@ -52,6 +52,7 @@ landly/
 | [docs/API_ENDPOINTS.md](docs/API_ENDPOINTS.md) | Описание всех API endpoints с примерами |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0 спецификация |
 | [docs/ENV_VARIABLES.md](docs/ENV_VARIABLES.md) | Полный справочник переменных окружения |
+| [docs/BACKEND_MVP_PLAN.md](docs/BACKEND_MVP_PLAN.md) | План финализации backend под MVP, smoke checklist |
 | [docs/MONITORING.md](docs/MONITORING.md) | Логирование, метрики, Prometheus, Grafana |
 | [docs/PUBLISHING_ARCHITECTURE.md](docs/PUBLISHING_ARCHITECTURE.md) | Архитектура публикации сайтов и CDN |
 | [apps/backend/migrations/README.md](apps/backend/migrations/README.md) | Работа с миграциями БД |

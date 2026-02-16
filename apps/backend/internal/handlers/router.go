@@ -156,9 +156,6 @@ func (r *Router) Setup() *gin.Engine {
 		sites.GET("/:slug/*path", r.generateHandler.ServePublished)
 	}
 
-	// Legacy routes (for backward compatibility, if needed)
-	r.engine.GET("/:slug", r.generateHandler.ServePublishedLegacy)
-
 	return r.engine
 }
 

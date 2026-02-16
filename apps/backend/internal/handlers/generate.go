@@ -416,7 +416,12 @@ func (h *GenerateHandler) ServePublished(c *gin.Context) {
 
 	if contentType != "" {
 		c.Header("Content-Type", contentType)
-		log.Debug("set content-type header", zap.String("content_type", contentType))
+	}
+	// Cache-Control: index.html — short cache; static assets — 5 min
+	if asset == "" || asset == "index.html" {
+		c.Header("Cache-Control", "public, max-age=60")
+	} else {
+		c.Header("Cache-Control", "public, max-age=300")
 	}
 
 	bytesWritten, err := io.Copy(c.Writer, reader)
@@ -434,50 +439,6 @@ func (h *GenerateHandler) ServePublished(c *gin.Context) {
 		zap.String("asset", asset),
 		zap.Int64("bytes_written", bytesWritten),
 		zap.String("content_type", contentType))
-}
-
-func (h *GenerateHandler) ServePublishedLegacy(c *gin.Context) {
-	slug := c.Param("slug")
-	if slug == "" || isReservedSlug(slug) {
-		c.Status(http.StatusNotFound)
-		return
-	}
-
-	reader, contentType, err := h.publishService.ServePublished(c.Request.Context(), slug, "")
-	if err != nil {
-		if domainErr, ok := err.(*domain.Error); ok {
-			c.String(domainErr.HTTPStatus(), domainErr.Message)
-			return
-		}
-		// Don't expose internal error details
-		logger.WithContext(c.Request.Context()).Error("failed to serve legacy published asset", zap.Error(err))
-		c.String(http.StatusInternalServerError, "Internal server error")
-		return
-	}
-	defer reader.Close()
-
-	if contentType != "" {
-		c.Header("Content-Type", contentType)
-	}
-
-	if _, err := io.Copy(c.Writer, reader); err != nil {
-		if errHandler := c.Error(err); errHandler != nil {
-			logger.WithContext(c.Request.Context()).Error("failed to write legacy published asset", zap.Error(errHandler))
-		}
-	}
-}
-
-func isReservedSlug(slug string) bool {
-	reserved := map[string]struct{}{
-		"health":  {},
-		"healthz": {},
-		"readyz":  {},
-		"sites":   {},
-		"v1":      {},
-	}
-
-	_, ok := reserved[strings.ToLower(slug)]
-	return ok
 }
 
 func respondWithDomainError(c *gin.Context, err error) bool {

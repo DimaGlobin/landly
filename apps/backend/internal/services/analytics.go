@@ -26,17 +26,25 @@ func NewAnalyticsService(
 
 // TrackEvent отслеживает событие (новый интерфейс)
 func (s *AnalyticsService) TrackEvent(ctx context.Context, req *domain.TrackEventRequest) error {
-	// Создаем событие
+	if req.ProjectID == "" {
+		return domain.ErrBadRequest.WithMessage("project ID is required")
+	}
+
+	projectUUID, err := uuid.Parse(req.ProjectID)
+	if err != nil {
+		return domain.ErrBadRequest.WithMessage("invalid project ID format")
+	}
+
 	event := &domain.AnalyticsEvent{
 		ID:        uuid.New(),
+		ProjectID: projectUUID,
 		EventType: req.EventType,
 		Path:      req.Path,
 		Referrer:  req.Referrer,
 	}
 
 	if err := s.analyticsRepo.TrackEvent(ctx, event); err != nil {
-		// Не критично, можем игнорировать ошибки трекинга
-		return nil
+		return err
 	}
 
 	return nil

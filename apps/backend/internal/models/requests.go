@@ -46,6 +46,7 @@ type PublishRequest struct {
 
 // Analytics requests and responses
 type TrackEventRequest struct {
+	ProjectID string `json:"-"` // From path /v1/analytics/:id/event, set by handler
 	EventType string `json:"event_type" binding:"required"`
 	Path      string `json:"path" binding:"required"`
 	Referrer  string `json:"referrer"`

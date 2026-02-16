@@ -32,25 +32,32 @@ func NewAnalyticsHandler(analyticsService AnalyticsService) *AnalyticsHandler {
 // @Tags analytics
 // @Accept json
 // @Produce json
-// @Param id path string true "Project ID"
+// @Param id path string true "Project ID (UUID)"
 // @Param request body dto.TrackEventRequest true "Track event request"
 // @Success 204
 // @Router /v1/analytics/{id}/event [post]
 func (h *AnalyticsHandler) TrackEvent(c *gin.Context) {
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		RespondError(c, domain.ErrValidationError.WithMessage("Invalid project ID format (expected UUID)"))
+		return
+	}
+
 	var req dto.TrackEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondValidationError(c, err.Error())
 		return
 	}
 
-	err := h.analyticsService.TrackEvent(c.Request.Context(), &domain.TrackEventRequest{
+	trackErr := h.analyticsService.TrackEvent(c.Request.Context(), &domain.TrackEventRequest{
+		ProjectID: projectID.String(),
 		EventType: req.EventType,
 		Path:      req.Path,
 		Referrer:  req.Referrer,
 	})
 
-	if err != nil {
-		logger.WithContext(c.Request.Context()).Warn("failed to track analytics event", zap.Error(err))
+	if trackErr != nil {
+		logger.WithContext(c.Request.Context()).Warn("failed to track analytics event", zap.Error(trackErr))
 	}
 
 	c.Status(http.StatusNoContent)
