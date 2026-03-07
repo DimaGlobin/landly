@@ -25,8 +25,8 @@ func (m *ProjectRepositoryMock) GetByID(ctx context.Context, id string) (*domain
 	return nil, args.Error(1)
 }
 
-func (m *ProjectRepositoryMock) GetByUserID(ctx context.Context, userID string) ([]*domain.Project, error) {
-	args := m.Called(ctx, userID)
+func (m *ProjectRepositoryMock) GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error) {
+	args := m.Called(ctx, userID, limit, offset)
 	if projects, ok := args.Get(0).([]*domain.Project); ok {
 		return projects, args.Error(1)
 	}
@@ -69,6 +69,14 @@ func (m *GenerationSessionRepositoryMock) GetByProjectID(ctx context.Context, pr
 	args := m.Called(ctx, projectID)
 	if sessions, ok := args.Get(0).([]*domain.GenerationSession); ok {
 		return sessions, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *GenerationSessionRepositoryMock) GetLatestByProjectID(ctx context.Context, projectID string) (*domain.GenerationSession, error) {
+	args := m.Called(ctx, projectID)
+	if session, ok := args.Get(0).(*domain.GenerationSession); ok {
+		return session, args.Error(1)
 	}
 	return nil, args.Error(1)
 }

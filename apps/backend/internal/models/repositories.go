@@ -19,7 +19,7 @@ type UserRepository interface {
 type ProjectRepository interface {
 	Create(ctx context.Context, project *Project) error
 	GetByID(ctx context.Context, id string) (*Project, error)
-	GetByUserID(ctx context.Context, userID string) ([]*Project, error)
+	GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*Project, error)
 	Update(ctx context.Context, project *Project) error
 	Delete(ctx context.Context, id string) error
 	UpdateSchema(ctx context.Context, projectID string, schemaJSON string) error
@@ -68,6 +68,7 @@ type GenerationSessionRepository interface {
 	Create(ctx context.Context, session *GenerationSession) error
 	GetByID(ctx context.Context, id string) (*GenerationSession, error)
 	GetByProjectID(ctx context.Context, projectID string) ([]*GenerationSession, error)
+	GetLatestByProjectID(ctx context.Context, projectID string) (*GenerationSession, error)
 	Update(ctx context.Context, session *GenerationSession) error
 	Delete(ctx context.Context, id string) error
 }

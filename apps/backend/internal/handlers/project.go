@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,7 +18,7 @@ type ProjectService interface {
 	GetProject(ctx context.Context, userID, projectID string) (*domain.Project, error)
 	UpdateProject(ctx context.Context, userID, projectID string, req *domain.UpdateProjectRequest) (*domain.Project, error)
 	DeleteProject(ctx context.Context, userID, projectID string) error
-	ListProjects(ctx context.Context, userID string) ([]*domain.Project, error)
+	ListProjects(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error)
 }
 
 type ProjectHandler struct {
@@ -115,8 +116,22 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 		return
 	}
 
+	const defaultLimit = 50
+	limit := defaultLimit
+	offset := 0
+	if l := c.Query("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	if o := c.Query("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+
 	ctx := c.Request.Context()
-	projects, err := h.projectService.ListProjects(ctx, userID.String())
+	projects, err := h.projectService.ListProjects(ctx, userID.String(), limit, offset)
 	if err != nil {
 		if domainErr, ok := err.(*domain.Error); ok {
 			RespondError(c, domainErr)

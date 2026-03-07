@@ -15,7 +15,7 @@ import (
 type ProjectRepository interface {
 	Create(ctx context.Context, project *domain.Project) error
 	GetByID(ctx context.Context, id string) (*domain.Project, error)
-	GetByUserID(ctx context.Context, userID string) ([]*domain.Project, error)
+	GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error)
 	Update(ctx context.Context, project *domain.Project) error
 	Delete(ctx context.Context, id string) error
 	UpdateSchema(ctx context.Context, projectID string, schemaJSON string) error
@@ -66,19 +66,23 @@ func (r *projectRepository) GetByID(ctx context.Context, id string) (*domain.Pro
 	return &project, nil
 }
 
-// GetByUserID получает проекты пользователя
-func (r *projectRepository) GetByUserID(ctx context.Context, userID string) ([]*domain.Project, error) {
+// GetByUserID получает проекты пользователя с пагинацией
+func (r *projectRepository) GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error) {
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		return nil, domain.ErrBadRequest.WithMessage("invalid user ID format")
 	}
 
-	query := r.qb.Select("id", "user_id", "name", "niche", "schema_json", "status", "created_at", "updated_at").
+	q := r.qb.Select("id", "user_id", "name", "niche", "schema_json", "status", "created_at", "updated_at").
 		From("projects").
 		Where(squirrel.Eq{"user_id": userUUID}).
 		OrderBy("updated_at DESC")
 
-	rows, err := r.qb.Query(query)
+	if limit > 0 {
+		q = q.Limit(uint64(limit)).Offset(uint64(offset))
+	}
+
+	rows, err := r.qb.Query(q)
 	if err != nil {
 		return nil, domain.ErrInternal.WithError(err)
 	}
@@ -87,8 +91,7 @@ func (r *projectRepository) GetByUserID(ctx context.Context, userID string) ([]*
 	var projects []*domain.Project
 	for rows.Next() {
 		var project domain.Project
-		err := rows.Scan(&project.ID, &project.UserID, &project.Name, &project.Niche, &project.SchemaJSON, &project.Status, &project.CreatedAt, &project.UpdatedAt)
-		if err != nil {
+		if err := rows.Scan(&project.ID, &project.UserID, &project.Name, &project.Niche, &project.SchemaJSON, &project.Status, &project.CreatedAt, &project.UpdatedAt); err != nil {
 			return nil, domain.ErrInternal.WithError(err)
 		}
 		projects = append(projects, &project)

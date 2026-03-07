@@ -10,11 +10,11 @@ import (
 
 // UserService сервис для управления пользователями
 type UserService struct {
-	userRepo UserRepository
+	userRepo domain.UserRepository
 }
 
 // NewUserService создаёт новый user service
-func NewUserService(userRepo UserRepository) *UserService {
+func NewUserService(userRepo domain.UserRepository) *UserService {
 	return &UserService{
 		userRepo: userRepo,
 	}

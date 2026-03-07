@@ -49,7 +49,7 @@ func NewGenerateService(
 	}
 }
 
-// GenerateSite генерирует лендинг (новый интерфейс)
+// GenerateSite генерирует лендинг (тонкий адаптер над GenerateLanding)
 func (s *GenerateService) GenerateSite(ctx context.Context, userID, projectID string, req *domain.GenerateRequest) (*domain.GenerationSession, error) {
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
@@ -61,23 +61,6 @@ func (s *GenerateService) GenerateSite(ctx context.Context, userID, projectID st
 		return nil, domain.ErrBadRequest.WithMessage("invalid project ID")
 	}
 
-	// Создаем сессию генерации
-	session := domain.NewGenerationSession(projectUUID, req.Prompt, "gpt-4")
-	if err := s.sessionRepo.Create(ctx, session); err != nil {
-		return nil, domain.ErrInternal.WithError(err)
-	}
-
-	defer func() {
-		if err := s.sessionRepo.Update(context.Background(), session); err != nil {
-			log := logger.WithContext(ctx).With(
-				zap.String("project_id", projectUUID.String()),
-				zap.String("user_id", userUUID.String()),
-			)
-			log.Error("failed to update session status", zap.Error(err))
-		}
-	}()
-
-	// Запускаем генерацию синхронно
 	log := logger.WithContext(ctx).With(
 		zap.String("project_id", projectUUID.String()),
 		zap.String("user_id", userUUID.String()),
@@ -89,30 +72,30 @@ func (s *GenerateService) GenerateSite(ctx context.Context, userID, projectID st
 	)
 
 	genStart := time.Now()
-	updatedProject, err := s.GenerateLanding(context.Background(), userUUID, projectUUID, req.Prompt, req.PaymentURL)
+	updatedProject, err := s.GenerateLanding(ctx, userUUID, projectUUID, req.Prompt, req.PaymentURL)
 	genDuration := time.Since(genStart).Seconds()
 
 	if err != nil {
 		log.Error("generation failed", zap.Error(err))
-		session.Status = domain.GenerationStatusFailed
-		session.CompletedAt = ptrTime(time.Now())
 		metrics.RecordGeneration("landing", "failed", genDuration)
-		return session, domain.ErrInternal.WithError(err)
+		// Return the failed session so callers can inspect its status
+		if failedSession, sessionErr := s.sessionRepo.GetLatestByProjectID(ctx, projectUUID.String()); sessionErr == nil {
+			return failedSession, err
+		}
+		return nil, err
 	}
 
 	log.Info("generation completed successfully")
-	session.Status = domain.GenerationStatusCompleted
-	session.CompletedAt = ptrTime(time.Now())
 	metrics.RecordGeneration("landing", "success", genDuration)
-	if updatedProject != nil {
-		session.SchemaJSON = updatedProject.SchemaJSON
-	}
 
-	// Обновляем сессию
-	if updateErr := s.sessionRepo.Update(context.Background(), session); updateErr != nil {
-		log.Error("failed to update session", zap.Error(updateErr))
-	} else {
-		log.Info("session updated in database")
+	session, err := s.ensureSessionForProject(ctx, updatedProject)
+	if err != nil {
+		// Non-critical: return a synthetic session rather than failing the request
+		return &domain.GenerationSession{
+			ProjectID:  projectUUID,
+			Status:     domain.GenerationStatusCompleted,
+			SchemaJSON: updatedProject.SchemaJSON,
+		}, nil
 	}
 
 	return session, nil
@@ -205,8 +188,8 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 			zap.Error(err),
 			zap.Duration("duration_ms", duration),
 		)
-		// Обновляем статус сессии на ошибку
 		session.Status = domain.GenerationStatusFailed
+		session.CompletedAt = ptrTime(time.Now())
 		return nil, domain.ErrInternal.WithMessage("AI generation failed")
 	}
 
@@ -223,6 +206,7 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 			zap.Duration("duration_ms", duration),
 		)
 		session.Status = domain.GenerationStatusFailed
+		session.CompletedAt = ptrTime(time.Now())
 		return nil, domain.ErrBadRequest.WithMessage(fmt.Sprintf("invalid schema: %v", err))
 	}
 
@@ -239,44 +223,15 @@ func (s *GenerateService) GenerateLanding(ctx context.Context, userID, projectID
 			zap.Int("normalized_length", len(normalizedSchemaJSON)))
 	}
 
-	// Сохраняем текущую схему как версию перед обновлением
-	if project.SchemaJSON != "" && s.versionRepo != nil {
-		currentVersion := domain.NewSchemaVersion(
-			projectID,
-			userID,
-			project.SchemaJSON,
-			domain.SchemaVersionSourceGenerate,
-		)
-		if err := s.versionRepo.Create(ctx, currentVersion); err != nil {
-			log.Warn("failed to save current schema as version", zap.Error(err))
-			// Продолжаем, даже если не удалось сохранить версию
-		}
-	}
-
-	// Сохраняем нормализованную схему в проект
 	log.Info("saving normalized schema to project")
-	if err := s.projectRepo.UpdateSchema(ctx, projectID.String(), normalizedSchemaJSON); err != nil {
+	if err := saveSchemaWithVersioning(ctx, s.projectRepo, s.versionRepo, project, userID, normalizedSchemaJSON, domain.SchemaVersionSourceGenerate, log); err != nil {
 		log.Error("failed to save schema to project",
 			zap.Error(err),
 			zap.Duration("duration_ms", duration),
 		)
 		session.Status = domain.GenerationStatusFailed
+		session.CompletedAt = ptrTime(time.Now())
 		return nil, domain.ErrInternal.WithError(err)
-	}
-
-	// Сохраняем новую версию (если versionRepo доступен)
-	// Используем нормализованную схему для версии
-	if s.versionRepo != nil {
-		newVersion := domain.NewSchemaVersion(
-			projectID,
-			userID,
-			normalizedSchemaJSON,
-			domain.SchemaVersionSourceGenerate,
-		)
-		if err := s.versionRepo.Create(ctx, newVersion); err != nil {
-			log.Warn("failed to save new schema version", zap.Error(err))
-			// Продолжаем, даже если не удалось сохранить версию
-		}
 	}
 
 	log.Info("schema saved to project successfully",
@@ -332,7 +287,7 @@ func (s *GenerateService) GetPreview(ctx context.Context, userID, projectID uuid
 
 // GetChatHistory возвращает текущую сессию и историю сообщений для проекта
 func (s *GenerateService) GetChatHistory(ctx context.Context, userID, projectID string) (*domain.GenerationSession, []*domain.GenerationMessage, error) {
-	project, err := s.ensureProjectOwnership(ctx, userID, projectID)
+	project, err := ensureProjectOwnership(ctx, s.projectRepo, userID, projectID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -357,7 +312,7 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 		return nil, nil, domain.ErrBadRequest.WithMessage("message content is required")
 	}
 
-	project, err := s.ensureProjectOwnership(ctx, userID, projectID)
+	project, err := ensureProjectOwnership(ctx, s.projectRepo, userID, projectID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -443,40 +398,12 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 			zap.Int("normalized_length", len(normalizedSchemaJSON)))
 	}
 
-	// Сохраняем текущую схему как версию перед обновлением
-	if project.SchemaJSON != "" && s.versionRepo != nil {
-		currentVersion := domain.NewSchemaVersion(
-			project.ID,
-			project.UserID,
-			project.SchemaJSON,
-			domain.SchemaVersionSourceChat,
-		)
-		if err := s.versionRepo.Create(ctx, currentVersion); err != nil {
-			log.Warn("failed to save current schema as version", zap.Error(err))
-			// Продолжаем, даже если не удалось сохранить версию
-		}
-	}
-
-	if err := s.projectRepo.UpdateSchema(ctx, project.ID.String(), normalizedSchemaJSON); err != nil {
+	if err := saveSchemaWithVersioning(ctx, s.projectRepo, s.versionRepo, project, project.UserID, normalizedSchemaJSON, domain.SchemaVersionSourceChat, log); err != nil {
 		log.Error("failed to persist generated schema",
 			zap.Error(err),
 			zap.Duration("duration_ms", duration),
 		)
 		return nil, nil, err
-	}
-
-	// Сохраняем новую версию (если versionRepo доступен)
-	if s.versionRepo != nil {
-		newVersion := domain.NewSchemaVersion(
-			project.ID,
-			project.UserID,
-			schemaJSON,
-			domain.SchemaVersionSourceChat,
-		)
-		if err := s.versionRepo.Create(ctx, newVersion); err != nil {
-			log.Warn("failed to save new schema version", zap.Error(err))
-			// Продолжаем, даже если не удалось сохранить версию
-		}
 	}
 
 	log.Info("schema saved successfully",
@@ -522,34 +449,16 @@ func (s *GenerateService) SendChatMessage(ctx context.Context, userID, projectID
 	return session, messages, nil
 }
 
-func (s *GenerateService) ensureProjectOwnership(ctx context.Context, userID, projectID string) (*domain.Project, error) {
-	project, err := s.projectRepo.GetByID(ctx, projectID)
-	if err != nil {
-		return nil, domain.ErrNotFound.WithMessage("project not found")
-	}
-
-	if project.UserID.String() != userID {
-		return nil, domain.ErrForbidden.WithMessage("access denied")
-	}
-
-	return project, nil
-}
-
 func (s *GenerateService) ensureSessionForProject(ctx context.Context, project *domain.Project) (*domain.GenerationSession, error) {
-	sessions, err := s.sessionRepo.GetByProjectID(ctx, project.ID.String())
-	if err != nil {
-		return nil, err
-	}
-
-	if len(sessions) > 0 {
-		session := sessions[0]
+	session, err := s.sessionRepo.GetLatestByProjectID(ctx, project.ID.String())
+	if err == nil {
 		if session.SchemaJSON == "" {
 			session.SchemaJSON = project.SchemaJSON
 		}
 		return session, nil
 	}
 
-	session := domain.NewGenerationSession(project.ID, "", "gpt-4")
+	session = domain.NewGenerationSession(project.ID, "", "gpt-4")
 	session.SchemaJSON = project.SchemaJSON
 	session.CreatedAt = time.Now()
 	session.UpdatedAt = session.CreatedAt

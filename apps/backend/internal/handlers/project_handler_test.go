@@ -58,8 +58,8 @@ func (m *mockProjectService) DeleteProject(ctx context.Context, userID, projectI
 	return args.Error(0)
 }
 
-func (m *mockProjectService) ListProjects(ctx context.Context, userID string) ([]*domain.Project, error) {
-	args := m.Called(ctx, userID)
+func (m *mockProjectService) ListProjects(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error) {
+	args := m.Called(ctx, userID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -164,7 +164,7 @@ func TestProjectHandler_GetProjects_Success(t *testing.T) {
 		{ID: uuid.New(), UserID: userID, Name: "Project 2", Status: domain.ProjectStatusPublished},
 	}
 
-	service.On("ListProjects", mock.Anything, userID.String()).Return(projects, nil)
+	service.On("ListProjects", mock.Anything, userID.String(), 50, 0).Return(projects, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

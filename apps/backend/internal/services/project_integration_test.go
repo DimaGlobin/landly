@@ -83,7 +83,7 @@ func TestProjectService_Integration_CRUD(t *testing.T) {
 	assert.Equal(t, project.Name, fetched.Name)
 
 	// List user's projects
-	projects, err := projectService.ListProjects(ctx, userID.String())
+	projects, err := projectService.ListProjects(ctx, userID.String(), 50, 0)
 	require.NoError(t, err, "ListProjects should succeed")
 	assert.Len(t, projects, 1)
 	assert.Equal(t, project.ID, projects[0].ID)
@@ -182,7 +182,7 @@ func TestProjectService_Integration_MultipleProjects(t *testing.T) {
 	}
 
 	// List should return all projects
-	projects, err := projectService.ListProjects(ctx, userID.String())
+	projects, err := projectService.ListProjects(ctx, userID.String(), 50, 0)
 	require.NoError(t, err)
 	assert.Len(t, projects, 3)
 }

@@ -15,6 +15,7 @@ type GenerationSessionRepository interface {
 	Create(ctx context.Context, session *domain.GenerationSession) error
 	GetByID(ctx context.Context, id string) (*domain.GenerationSession, error)
 	GetByProjectID(ctx context.Context, projectID string) ([]*domain.GenerationSession, error)
+	GetLatestByProjectID(ctx context.Context, projectID string) (*domain.GenerationSession, error)
 	Update(ctx context.Context, session *domain.GenerationSession) error
 	Delete(ctx context.Context, id string) error
 }
@@ -93,6 +94,33 @@ func (r *generationSessionRepository) GetByProjectID(ctx context.Context, projec
 	}
 
 	return sessions, nil
+}
+
+// GetLatestByProjectID возвращает последнюю сессию проекта (LIMIT 1)
+func (r *generationSessionRepository) GetLatestByProjectID(ctx context.Context, projectID string) (*domain.GenerationSession, error) {
+	projectUUID, err := uuid.Parse(projectID)
+	if err != nil {
+		return nil, domain.ErrBadRequest.WithMessage("invalid project ID format")
+	}
+
+	query := r.qb.Select("id", "project_id", "prompt", "model", "status", "schema_json", "completed_at", "created_at", "updated_at").
+		From("generation_sessions").
+		Where(squirrel.Eq{"project_id": projectUUID}).
+		OrderBy("created_at DESC").
+		Limit(1)
+
+	row := r.qb.QueryRow(query)
+
+	var session domain.GenerationSession
+	err = row.Scan(&session.ID, &session.ProjectID, &session.Prompt, &session.Model, &session.Status, &session.SchemaJSON, &session.CompletedAt, &session.CreatedAt, &session.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrNotFound.WithMessage("session not found")
+		}
+		return nil, domain.ErrInternal.WithError(err)
+	}
+
+	return &session, nil
 }
 
 // Update обновляет сессию

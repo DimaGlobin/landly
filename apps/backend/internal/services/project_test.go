@@ -33,8 +33,8 @@ func (m *mockProjectRepository) GetByID(ctx context.Context, id string) (*domain
 	return args.Get(0).(*domain.Project), args.Error(1)
 }
 
-func (m *mockProjectRepository) GetByUserID(ctx context.Context, userID string) ([]*domain.Project, error) {
-	args := m.Called(ctx, userID)
+func (m *mockProjectRepository) GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error) {
+	args := m.Called(ctx, userID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -345,9 +345,9 @@ func TestProjectService_ListProjects_Success(t *testing.T) {
 		{ID: uuid.New(), UserID: userID, Name: "Project 2"},
 	}
 
-	repo.On("GetByUserID", ctx, userID.String()).Return(projects, nil)
+	repo.On("GetByUserID", ctx, userID.String(), 50, 0).Return(projects, nil)
 
-	result, err := service.ListProjects(ctx, userID.String())
+	result, err := service.ListProjects(ctx, userID.String(), 50, 0)
 
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
@@ -364,9 +364,9 @@ func TestProjectService_ListProjects_EmptyList(t *testing.T) {
 
 	userID := uuid.New()
 
-	repo.On("GetByUserID", ctx, userID.String()).Return([]*domain.Project{}, nil)
+	repo.On("GetByUserID", ctx, userID.String(), 50, 0).Return([]*domain.Project{}, nil)
 
-	result, err := service.ListProjects(ctx, userID.String())
+	result, err := service.ListProjects(ctx, userID.String(), 50, 0)
 
 	require.NoError(t, err)
 	assert.Empty(t, result)
@@ -383,9 +383,9 @@ func TestProjectService_ListProjects_RepositoryError(t *testing.T) {
 
 	userID := uuid.New()
 
-	repo.On("GetByUserID", ctx, userID.String()).Return(nil, errors.New("db error"))
+	repo.On("GetByUserID", ctx, userID.String(), 50, 0).Return(nil, errors.New("db error"))
 
-	result, err := service.ListProjects(ctx, userID.String())
+	result, err := service.ListProjects(ctx, userID.String(), 50, 0)
 
 	assert.Nil(t, result)
 	require.Error(t, err)

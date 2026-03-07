@@ -11,18 +11,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// UserRepository интерфейс для репозитория пользователей
-type UserRepository interface {
-	Create(ctx context.Context, user *domain.User) error
-	GetByID(ctx context.Context, id string) (*domain.User, error)
-	GetByEmail(ctx context.Context, email string) (*domain.User, error)
-	Update(ctx context.Context, user *domain.User) error
-	Delete(ctx context.Context, id string) error
-}
-
 // AuthService сервис для аутентификации
 type AuthService struct {
-	userRepo   UserRepository
+	userRepo   domain.UserRepository
 	jwtSecret  string
 	accessTTL  time.Duration
 	refreshTTL time.Duration
@@ -36,7 +27,7 @@ type AuthTokens struct {
 }
 
 // NewAuthService создаёт новый auth service
-func NewAuthService(userRepo UserRepository, jwtSecret string, accessTTL, refreshTTL time.Duration) *AuthService {
+func NewAuthService(userRepo domain.UserRepository, jwtSecret string, accessTTL, refreshTTL time.Duration) *AuthService {
 	if accessTTL <= 0 {
 		accessTTL = 15 * time.Minute
 	}

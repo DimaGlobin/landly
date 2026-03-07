@@ -15,7 +15,7 @@ import (
 type ProjectRepository interface {
 	Create(ctx context.Context, project *domain.Project) error
 	GetByID(ctx context.Context, id string) (*domain.Project, error)
-	GetByUserID(ctx context.Context, userID string) ([]*domain.Project, error)
+	GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error)
 	Update(ctx context.Context, project *domain.Project) error
 	Delete(ctx context.Context, id string) error
 }
@@ -83,9 +83,9 @@ func (s *ProjectService) GetProject(ctx context.Context, userID, projectID strin
 	return project, nil
 }
 
-// ListProjects получает проекты пользователя
-func (s *ProjectService) ListProjects(ctx context.Context, userID string) ([]*domain.Project, error) {
-	projects, err := s.projectRepo.GetByUserID(ctx, userID)
+// ListProjects получает проекты пользователя с пагинацией
+func (s *ProjectService) ListProjects(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error) {
+	projects, err := s.projectRepo.GetByUserID(ctx, userID, limit, offset)
 	if err != nil {
 		return nil, domain.ErrInternal.WithError(err)
 	}

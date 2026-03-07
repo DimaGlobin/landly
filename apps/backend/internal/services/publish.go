@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,6 +57,7 @@ type PublicBaseProvider interface {
 // StaticPublicBaseProvider статический провайдер базового URL
 // Может быть обновлен через UpdateBase для изменения BASE_URL без перезапуска
 type StaticPublicBaseProvider struct {
+	mu   sync.RWMutex
 	base string
 }
 
@@ -64,6 +66,8 @@ func NewStaticPublicBaseProvider(base string) *StaticPublicBaseProvider {
 }
 
 func (p *StaticPublicBaseProvider) GetPublicBase() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.base != "" {
 		return p.base
 	}
@@ -72,6 +76,8 @@ func (p *StaticPublicBaseProvider) GetPublicBase() string {
 
 // UpdateBase обновляет базовый URL (для изменения BASE_URL без перезапуска)
 func (p *StaticPublicBaseProvider) UpdateBase(newBase string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.base = strings.TrimRight(newBase, "/")
 }
 
@@ -168,15 +174,10 @@ func (s *PublishService) PublishSite(ctx context.Context, userID, projectID stri
 	}
 
 	// Проверка доступа к проекту
-	project, err := s.projectRepo.GetByID(ctx, projectID)
+	project, err := ensureProjectOwnership(ctx, s.projectRepo, userID, projectID)
 	if err != nil {
-		log.Error("project not found", zap.String("project_id", projectID), zap.Error(err))
-		return nil, domain.ErrNotFound.WithMessage("project not found")
-	}
-
-	if project.UserID.String() != userID {
-		log.Warn("access denied", zap.String("user_id", userID), zap.String("project_user_id", project.UserID.String()))
-		return nil, domain.ErrForbidden.WithMessage("access denied")
+		log.Error("project access check failed", zap.String("project_id", projectID), zap.Error(err))
+		return nil, err
 	}
 
 	// Создаем или обновляем цель публикации с использованием имени проекта
@@ -575,52 +576,17 @@ func (s *PublishService) ServePublished(ctx context.Context, subdomain, assetPat
 			zap.String("project_id", target.ProjectID.String()))
 	}
 
-	seen := make(map[string]struct{})
-	var searchBases []string
-	addBase := func(base string) {
-		if _, ok := seen[base]; ok {
-			log.Debug("skipping duplicate search base", zap.String("base", base))
-			return
-		}
-		seen[base] = struct{}{}
-		searchBases = append(searchBases, base)
-		log.Debug("added search base", zap.String("base", base))
-	}
-
-	// Приоритет 1: current симлинк (для atomic publish)
+	// Build at most 2 search bases to minimise S3 roundtrips:
+	// 1. canonical release path (atomic-publish current pointer)
+	// 2. direct subdomain path (backward-compat fallback)
 	basePath := fmt.Sprintf("sites/%s", subdomain)
 	currentPath := s.publisher.GetCurrentReleasePath(basePath)
-	log.Debug("generating search paths",
-		zap.String("base_path", basePath),
-		zap.String("current_release_path", currentPath))
 
-	addBase(currentPath)
+	searchBases := []string{currentPath, basePath}
 
-	// Приоритет 2: прямой путь (для обратной совместимости)
-	addBase(basePath)
-
-	if targetErr == nil && target != nil {
-		if !strings.EqualFold(target.Subdomain, subdomain) {
-			// Если subdomain изменился, проверяем оба
-			altBasePath := fmt.Sprintf("sites/%s", target.Subdomain)
-			altCurrentPath := s.publisher.GetCurrentReleasePath(altBasePath)
-			log.Debug("subdomain mismatch, adding alternative paths",
-				zap.String("requested_subdomain", subdomain),
-				zap.String("target_subdomain", target.Subdomain),
-				zap.String("alt_base_path", altBasePath),
-				zap.String("alt_current_path", altCurrentPath))
-			addBase(altCurrentPath)
-			addBase(altBasePath)
-		}
-		// Fallback на project ID
-		projectBasePath := fmt.Sprintf("sites/%s", target.ProjectID.String())
-		projectCurrentPath := s.publisher.GetCurrentReleasePath(projectBasePath)
-		log.Debug("adding project ID fallback paths",
-			zap.String("project_id", target.ProjectID.String()),
-			zap.String("project_base_path", projectBasePath),
-			zap.String("project_current_path", projectCurrentPath))
-		addBase(projectCurrentPath)
-		addBase(projectBasePath)
+	// Deduplicate in case GetCurrentReleasePath returns the same value as basePath
+	if currentPath == basePath {
+		searchBases = []string{basePath}
 	}
 
 	log.Info("searching for file",

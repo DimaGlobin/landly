@@ -91,7 +91,7 @@ func (m *mockProjectRepo) Create(ctx context.Context, project *domain.Project) e
 func (m *mockProjectRepo) GetByID(ctx context.Context, id string) (*domain.Project, error) {
 	return nil, domain.ErrNotFound
 }
-func (m *mockProjectRepo) GetByUserID(ctx context.Context, userID string) ([]*domain.Project, error) {
+func (m *mockProjectRepo) GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Project, error) {
 	return nil, nil
 }
 func (m *mockProjectRepo) Update(ctx context.Context, project *domain.Project) error   { return nil }
